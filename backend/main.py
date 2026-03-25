@@ -27,17 +27,16 @@ app = FastAPI(title="CompeteSmart Intelligence API")
 def read_root():
     return {"message": "Market Intelligence Engine API is running"}
 
-@app.post("/api/signals/ingest")
-def ingest_signals(signals: List[SignalInput], background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+@app.post("/api/intelligence/run-pipeline")
+def run_pipeline(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """
+    Triggers the Intelligence loop:
+    1. Scans DB for raw teammate signals and auto-embeds them (sync).
+    2. Runs HDBSCAN semantic grouping algorithm.
+    """
     engine = ClusteringEngine(db)
-    
-    # Process and store raw signals
-    raw = [s.model_dump() for s in signals]
-    processed = engine.process_new_signals(raw)
-    
-    # Trigger HDBSCAN clustering asynchronously
     background_tasks.add_task(engine.run_clustering)
-    return {"status": "success", "processed_count": len(processed)}
+    return {"status": "success", "message": "Intelligence pipeline triggered asynchronously in background!"}
 
 @app.get("/api/insights/trends", response_model=List[TrendResult])
 def get_trends(db: Session = Depends(get_db)):
