@@ -1,0 +1,54 @@
+[
+  {
+    "cluster": "Budget Tools",
+    "priority": "High Priority",
+    "experiment": "Test enterprise-focused pricing with relevant messaging in 'Budget Tools' to capture untapped segment.",
+    "counterfactual": {
+      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
+      "explore_whitespace": "High differentiation by targeting enterprise, strong growth potential in a whitespace."
+    },
+    "risk": "Low Risk",
+    "reasoning": "Cluster 'Budget Tools' has 25.0% saturation and a trend score of 0.57. The generated priority score is 0.64 (High Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'enterprise' to avoid high competition.",
+    "source": "NextGen_36",
+    "original_text": "Affordable, high-value tools tailored for students to save money."
+  },
+  {
+    "cluster": "AI Automation",
+    "priority": "Low Priority",
+    "experiment": "Test freelancers-focused pricing with relevant messaging in 'AI Automation' to capture untapped segment.",
+    "counterfactual": {
+      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
+      "explore_whitespace": "High differentiation by targeting freelancers, strong growth potential in a whitespace."
+    },
+    "risk": "Medium Risk",
+    "reasoning": "Cluster 'AI Automation' has 55.0% saturation and a trend score of -0.01. The generated priority score is 0.17 (Low Priority). Risk assessed as Medium Risk. Recommending to explore whitespace targeting 'freelancers' to avoid high competition.",
+    "source": "NextGen_14",
+    "original_text": "Automate your workflow with cutting-edge AI designed specifically for enterprise."
+  },
+  {
+    "cluster": "Premium Security",
+    "priority": "Medium Priority",
+    "experiment": "Test students-focused pricing with relevant messaging in 'Premium Security' to capture untapped segment.",
+    "counterfactual": {
+      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
+      "explore_whitespace": "High differentiation by targeting students, strong growth potential in a whitespace."
+    },
+    "risk": "Low Risk",
+    "reasoning": "Cluster 'Premium Security' has 15.0% saturation and a trend score of 0.42. The generated priority score is 0.59 (Medium Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'students' to avoid high competition.",
+    "source": "NextGen_55",
+    "original_text": "Enterprise-grade security solutions with dedicated support for enterprise."
+  },
+  {
+    "cluster": "Eco-Friendly Tech",
+    "priority": "Medium Priority",
+    "experiment": "Test enterprise-focused pricing with relevant messaging in 'Eco-Friendly Tech' to capture untapped segment.",
+    "counterfactual": {
+      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
+      "explore_whitespace": "High differentiation by targeting enterprise, strong growth potential in a whitespace."
+    },
+    "risk": "Low Risk",
+    "reasoning": "Cluster 'Eco-Friendly Tech' has 5.0% saturation and a trend score of 0.04. The generated priority score is 0.40 (Medium Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'enterprise' to avoid high competition.",
+    "source": "TechCorp_71",
+    "original_text": "Sustainable and green technology solutions built for freelancers."
+  }
+]
