@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, X } from "lucide-react";
+import Link from "next/link";
 
 export default function Hero() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -28,7 +29,12 @@ export default function Hero() {
     return () => clearTimeout(timer);
   }, []);
 
-  const menuLinks = ["Home", "About Us", "Projects", "Contact"];
+  const menuLinks = [
+    { title: "Home", href: "#" },
+    { title: "About Us", href: "#about-us" },
+    { title: "Projects", href: "#" },
+    { title: "Contact", href: "#" },
+  ];
 
   const featureItems = [
     "Real-Time Tracking",
@@ -81,12 +87,12 @@ export default function Hero() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <button className="px-6 py-2.5 rounded-full border border-[#94A3B8]/40 hover:bg-[#94A3B8]/10 transition-colors text-sm text-[#94A3B8]">
+          <a href="#about-us" className="px-6 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors text-sm">
             About Us
-          </button>
-          <button className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-semibold hover:opacity-90 transition-opacity">
+          </a>
+          <Link href="/auth" className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-semibold hover:opacity-90 transition-opacity text-center flex items-center">
             Get Started
-          </button>
+          </Link>
         </div>
       </nav>
 
@@ -208,8 +214,9 @@ export default function Hero() {
             <div className="flex-1 flex flex-col justify-center px-6 md:px-20 lg:px-40">
               {menuLinks.map((link, i) => (
                 <motion.a
-                  key={link}
-                  href="#"
+                  key={link.title}
+                  href={link.href}
+                  onClick={() => setMenuOpen(false)}
                   initial={{ opacity: 0, x: -60 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{
@@ -219,7 +226,7 @@ export default function Hero() {
                   className="group flex items-center justify-between py-6 md:py-8 border-b border-background/10 text-background hover:text-background/80 transition-colors"
                 >
                   <span className="text-[clamp(2rem,5vw,4.5rem)] font-light tracking-[-0.06em] group-hover:translate-x-1 transition-transform duration-300">
-                    {link}
+                    {link.title}
                   </span>
                   <ArrowRight className="w-8 h-8 md:w-12 md:h-12 opacity-0 group-hover:opacity-100 group-hover:translate-x-2 transition-all duration-300" />
                 </motion.a>

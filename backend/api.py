@@ -7,6 +7,7 @@ from src.intelligence.clustering import ClusteringEngine
 from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult, WhitespaceResult, DriftResult
+from src.auth import get_current_user
 from typing import List
 
 # Note: Ensure the `vector` extension exists in PostgreSQL before making tables.
@@ -26,7 +27,7 @@ def read_root():
     return {"message": "Market Intelligence Engine API is running"}
 
 @app.post("/api/intelligence/run-pipeline")
-def run_pipeline(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def run_pipeline(background_tasks: BackgroundTasks, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Triggers the Intelligence loop:
     1. Scans DB for raw teammate signals and auto-embeds them (sync).
@@ -37,27 +38,27 @@ def run_pipeline(background_tasks: BackgroundTasks, db: Session = Depends(get_db
     return {"status": "success", "message": "Intelligence pipeline triggered asynchronously in background!"}
 
 @app.get("/api/insights/trends", response_model=List[TrendResult])
-def get_trends(db: Session = Depends(get_db)):
+def get_trends(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     engine = TemporalEngine(db)
     return engine.calculate_trends()
 
 @app.get("/api/insights/saturation", response_model=List[SaturationResult])
-def get_saturation(db: Session = Depends(get_db)):
+def get_saturation(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     engine = TemporalEngine(db)
     return engine.calculate_saturation()
 
 @app.get("/api/insights/whitespace", response_model=List[WhitespaceResult])
-def get_whitespace(db: Session = Depends(get_db)):
+def get_whitespace(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     engine = AdvancedIntelligenceEngine(db)
     return engine.detect_whitespace()
 
 @app.get("/api/insights/drift/{competitor_id}", response_model=DriftResult)
-def get_drift(competitor_id: str, db: Session = Depends(get_db)):
+def get_drift(competitor_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     engine = AdvancedIntelligenceEngine(db)
     return engine.detect_persona_drift(competitor_id)
 
 @app.get("/api/insights/summary/{cluster_id}")
-def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db)):
+def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     # Consolidate all 5 engines into the requested output schema
     temp_engine = TemporalEngine(db)
     

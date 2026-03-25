@@ -19,7 +19,7 @@ RUN_SEED = False
 RUN_ANALYSIS = True
 
 # Add backend and web-scraper to sys.path to ensure imports work correctly
-sys.path.append(os.path.join(os.getcwd(), "web-scraper"))
+sys.path.insert(0, os.path.join(os.getcwd(), "web-scraper"))
 
 from src.database import SessionLocal, engine
 from src import models
@@ -142,27 +142,30 @@ async def main():
         decisions = process_decisions(insights)
         logger.info(f" -> Generated {len(decisions)} experiment recommendations.")
         
-        # Consolidate with Trust Scores
+        # Consolidate with Trust Scores (LOCKED SCHEMA)
         final_output = []
         for decision in decisions:
             cluster_id = decision["cluster_id"]
+            
+            # Fetch signal IDs for evidence
+            evidence_ids = [str(s.id) for s in session.query(models.Signal).filter(models.Signal.cluster_id == cluster_id).limit(5).all()]
+            
+            # Execute trust validation
             trust_output = compute_trust_score(
                 cluster_id=cluster_id, 
                 experiment=decision["experiment"], 
                 client_positioning="premium"
             )
             
+            # Map to Locked Schema
             final_output.append({
+                "insight": f"Cluster '{decision['cluster_name']}' is showing a {decision['priority']} trend with {decision['priority_score']*100}% momentum.",
                 "cluster_id": cluster_id,
-                "cluster_name": decision["cluster_name"],
-                "decision": {
-                    "priority": decision["priority"],
-                    "priority_score": decision["priority_score"],
-                    "experiment": decision["experiment"],
-                    "counterfactual": decision["counterfactual"]
-                },
-                "trust_layer": trust_output,
-                "timestamp": datetime.utcnow().isoformat()
+                "trend": decision["priority"],
+                "confidence": round(1.0 - trust_output["risk_score"], 2),
+                "risk": trust_output["risk_score"],
+                "recommended_action": decision["experiment"],
+                "evidence": evidence_ids
             })
             
         # Save to JSON
@@ -170,6 +173,16 @@ async def main():
         with open(output_path, "w") as f:
             json.dump(final_output, f, indent=2)
             
+        # [PIPELINE SUMMARY]
+        logger.info("\n" + "="*30)
+        logger.info("[PIPELINE SUMMARY]")
+        logger.info(f"Signals    : {total_signals}")
+        logger.info(f"Embeddings : {session.query(models.VectorEmbedding).count()}")
+        logger.info(f"Clusters   : {total_clusters}")
+        logger.info(f"Trends     : {len(trends)}")
+        logger.info(f"Insights   : {len(final_output)}")
+        logger.info("="*30)
+        
         logger.info(f"--- PIPELINE COMPLETE ✓ Output saved to {output_path} ---")
 
     except Exception as e:
