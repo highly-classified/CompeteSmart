@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
-import { Poppins, Source_Serif_4 } from "next/font/google";
+import localFont from "next/font/local";
+import { Gilda_Display } from "next/font/google";
 import "./globals.css";
 
-const poppins = Poppins({
-  variable: "--font-poppins",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600"],
+const geistSans = localFont({
+  src: "./fonts/GeistVF.woff",
+  variable: "--font-geist-sans",
+  weight: "100 900",
 });
 
-const sourceSerif = Source_Serif_4({
-  variable: "--font-source-serif",
+const gildaDisplay = Gilda_Display({
+  weight: "400",
   subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: ["400"],
+  variable: "--font-gilda",
+});
+
+const bungee = localFont({
+  src: "./fonts/Bungee/Bungee-Regular.ttf",
+  variable: "--font-bungee",
+  weight: "400",
 });
 
 export const metadata: Metadata = {
-  title: "Bloom | AI-powered plant/floral design",
-  description: "Innovating the spirit of bloom AI",
+  title: "CompeteSmart",
+  description: "Mastering the art of market intelligence",
 };
 
 export default function RootLayout({
@@ -26,8 +32,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${poppins.variable} ${sourceSerif.variable}`}>
-      <body className="antialiased font-sans bg-black text-white min-h-screen">
+    <html lang="en">
+      <body
+        className={`${geistSans.variable} ${gildaDisplay.variable} ${bungee.variable} antialiased`}
+      >
         {children}
       </body>
     </html>
