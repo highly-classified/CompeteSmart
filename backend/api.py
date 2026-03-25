@@ -237,7 +237,7 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 # ==========================================
 
 @app.get("/api/charts/opportunity")
-def get_chart_opportunity(db: Session = Depends(get_db)):
+def get_chart_opportunity(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 4: Opportunity / Whitespace (Quadrant Chart)
     X-axis -> competition (frequency)
@@ -272,7 +272,7 @@ def get_chart_opportunity(db: Session = Depends(get_db)):
     return chart_data
 
 @app.get("/api/charts/competitor-scores")
-def get_chart_competitor_scores(db: Session = Depends(get_db)):
+def get_chart_competitor_scores(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 5: Competitor Comparison (Grouped Bar Chart)
     X-axis -> competitors
@@ -315,7 +315,7 @@ def get_chart_competitor_scores(db: Session = Depends(get_db)):
     return chart_data
 
 @app.get("/api/charts/risk-saturation")
-def get_chart_risk_saturation(db: Session = Depends(get_db)):
+def get_chart_risk_saturation(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 6: Risk / Saturation (Gauge / Simple Bar)
     Shows saturation score and competition density to explicitly flag "What NOT to do".
