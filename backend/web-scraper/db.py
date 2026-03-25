@@ -38,6 +38,10 @@ _REQUIRED_TABLES = [
     "snapshots",
     "extracted_content",
     "scrape_state",
+    "clusters",
+    "signals",
+    "trends",
+    "vector_embeddings",
 ]
 
 
@@ -191,6 +195,38 @@ CREATE TABLE IF NOT EXISTS extracted_content (
 CREATE TABLE IF NOT EXISTS scrape_state (
     url             TEXT PRIMARY KEY,
     last_scraped_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS clusters (
+    id          TEXT PRIMARY KEY,
+    label       TEXT,
+    description TEXT,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS signals (
+    id            SERIAL PRIMARY KEY,
+    competitor_id INT NOT NULL REFERENCES competitors(id) ON DELETE CASCADE,
+    snapshot_id   INT REFERENCES snapshots(id) ON DELETE CASCADE,
+    content       TEXT NOT NULL,
+    category      TEXT,
+    cluster_id    TEXT REFERENCES clusters(id),
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS trends (
+    id            SERIAL PRIMARY KEY,
+    cluster_id    TEXT REFERENCES clusters(id),
+    frequency     INT,
+    growth_rate   FLOAT,
+    saturation    FLOAT,
+    calculated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS vector_embeddings (
+    id        TEXT PRIMARY KEY,
+    embedding vector(384),
+    metadata_ JSONB
 );
 """
 
