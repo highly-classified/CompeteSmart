@@ -28,19 +28,19 @@ export default function Hero() {
     return () => clearTimeout(timer);
   }, []);
 
-  const menuLinks = ["Home", "About Us", "Services", "Projects", "Contact"];
+  const menuLinks = ["Home", "About Us", "Projects", "Contact"];
 
-  const marqueeBrands = [
-    "Opensense",
-    "DKNY",
-    "Under Armour",
-    "LIU·JO",
-    "ATOM",
-    "ECCO",
-    "ORUM",
+  const featureItems = [
+    "Real-Time Tracking",
+    "AI-Driven Insights",
+    "Trend Analysis",
+    "Strategic Prioritization",
+    "Risk Assessment",
+    "Actionable Intel",
+    "Data Integration",
   ];
   // Duplicated twice for seamless loop
-  const marqueeItems = [...marqueeBrands, ...marqueeBrands, ...marqueeBrands];
+  const marqueeItems = [...featureItems, ...featureItems, ...featureItems];
 
   return (
     <div className="relative w-full h-screen min-h-screen overflow-hidden flex flex-col font-sans">
@@ -72,17 +72,17 @@ export default function Hero() {
         </button>
 
         <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block md:static md:translate-x-0 lg:absolute lg:left-1/2 lg:-translate-x-1/2">
-          <span className="text-2xl md:text-4xl font-bungee tracking-wider text-foreground drop-shadow-md">
-            COMPETESMART
+          <span className="font-bungee tracking-wider text-foreground drop-shadow-md flex items-baseline">
+            <span className="text-3xl md:text-5xl">C</span>
+            <span className="text-xl md:text-3xl">OMPETE</span>
+            <span className="text-3xl md:text-5xl">S</span>
+            <span className="text-xl md:text-3xl">MART</span>
           </span>
         </div>
 
         <div className="hidden md:flex items-center gap-3">
           <button className="px-6 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors text-sm">
             About Us
-          </button>
-          <button className="px-6 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors text-sm">
-            Services
           </button>
           <button className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-semibold hover:opacity-90 transition-opacity">
             Get Started
@@ -149,14 +149,14 @@ export default function Hero() {
         </div>
       </main>
 
-      {/* Clients/Partners Marquee Bar */}
+      {/* Platform Features Marquee Bar */}
       <div className="relative z-10 w-full mt-auto mb-0 md:mb-6 px-6 md:px-10 pb-6 md:pb-0">
         <div className="flex justify-between items-center mb-4">
           <span className="text-xs font-medium tracking-[0.2em] uppercase text-foreground">
-            Our Partners
+            Core Features
           </span>
           <span className="hidden md:block text-xs font-medium tracking-[0.2em] uppercase text-foreground">
-            Backed by 30+ global brands
+            Empowering Strategic Decisions
           </span>
         </div>
         <div className="border-t border-foreground/10 overflow-hidden py-5 flex">
@@ -194,8 +194,11 @@ export default function Hero() {
               </button>
 
               <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block md:static md:translate-x-0 lg:absolute lg:left-1/2 lg:-translate-x-1/2">
-                <span className="text-2xl md:text-4xl font-bungee tracking-wider text-background drop-shadow-md">
-                  COMPETESMART
+                <span className="font-bungee tracking-wider text-background drop-shadow-md flex items-baseline">
+                  <span className="text-3xl md:text-5xl">C</span>
+                  <span className="text-xl md:text-3xl">OMPETE</span>
+                  <span className="text-3xl md:text-5xl">S</span>
+                  <span className="text-xl md:text-3xl">MART</span>
                 </span>
               </div>
               <div className="w-[100px]" /* Spacer */></div>

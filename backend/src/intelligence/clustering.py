@@ -14,130 +14,22 @@ class ClusteringEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def process_new_signals(self, raw_signals: list[dict]):
-        processed = []
-        for signal in raw_signals:
-            content = signal["content"].lower().strip()
-            
-            # Generate Embedding
-            embedding = model.encode(content).tolist()
-            
-            # Store cleanly in strict relational table
-            new_signal = Signal(
-                competitor_id=signal["competitor_id"],
-                category=signal["signal_type"],
-                content=content
-            )
-            self.db.add(new_signal)
-            self.db.flush() # Force ID generation
-            
-            # Store embeddings explicitly in the Vector DB structural table
-            vec = VectorEmbedding(
-                id=str(new_signal.id),
-                embedding=embedding,
-                metadata_={
-                    "competitor_id": str(signal["competitor_id"]),
-                    "category": signal["signal_type"],
-                    "content": content,
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            )
-            self.db.add(vec)
-            processed.append(new_signal)
-            
-    def ingest_extracted_content(self):
-        """
-        Pulls raw data from `extracted_content` (populated by teammate's scrapers)
-        and converts it into `signals` for the ML Intelligence Layer.
-        """
-        from src.models import ExtractedContent, Snapshot, Signal
-        
-        unprocessed = self.db.query(ExtractedContent, Snapshot.competitor_id).join(
-            Snapshot, ExtractedContent.snapshot_id == Snapshot.id
-        ).outerjoin(
-            Signal,
-            (ExtractedContent.snapshot_id == Signal.snapshot_id) &
-            (ExtractedContent.content == Signal.content)
-        ).filter(Signal.id == None).all()
-        
-        if not unprocessed:
-            return 0
-            
-        count = 0
-        for ext_content, comp_id in unprocessed:
-            if not ext_content.content or not ext_content.content.strip():
-                continue
-                
-            new_signal = Signal(
-                competitor_id=comp_id,
-                snapshot_id=ext_content.snapshot_id,
-                content=ext_content.content,
-                category=ext_content.content_type
-            )
-            self.db.add(new_signal)
-            count += 1
-            
-        self.db.commit()
-        return count
-
-    def sync_missing_embeddings(self):
-        """
-        Safety Net: If the scraping team writes directly to the Neon PostgreSQL 
-        `signals` table, this function finds signals without embeddings, 
-        generates them, and stores them in the Vector DB automatically.
-        """
-        missing_signals = self.db.query(Signal).outerjoin(
-            VectorEmbedding, cast(Signal.id, String) == VectorEmbedding.id
-        ).filter(VectorEmbedding.id == None).all()
-        
-        if not missing_signals:
-            return 0
-            
-        count = 0
-        for s in missing_signals:
-            content = s.content.lower().strip()
-            embedding = model.encode(content).tolist()
-            
-            vec = VectorEmbedding(
-                id=str(s.id),
-                embedding=embedding,
-                metadata_={
-                    "competitor_id": str(s.competitor_id) if s.competitor_id else None,
-                    "category": s.category,
-                    "content": content,
-                    "timestamp": s.created_at.isoformat() if s.created_at else datetime.utcnow().isoformat()
-                }
-            )
-            self.db.add(vec)
-            count += 1
-            
-        from sqlalchemy.exc import IntegrityError
-        try:
-            self.db.commit()
-        except IntegrityError:
-            self.db.rollback()
-            print(f"Notice: Avoided inserting duplicate embeddings from parallel API call.")
-        return count
-
     def run_clustering(self):
         """
         Runs HDBSCAN over all unclustered signals. 
         Requires joining signals with their respective vector embeddings.
         """
-        from src.models import ExtractedContent, Snapshot, Signal
-        
-        # Step 0: Ingest raw data from your teammate's scraping outputs!
-        ingested = self.ingest_extracted_content()
-        print(f"Ingested {ingested} raw scraped data pieces into semantics.")
+        from src.models import Signal, VectorEmbedding, Cluster
+        import numpy as np
+        import hdbscan
+        import uuid
 
-        # Step 1: Auto-Embed whatever the Teammate inserted into DB / Ingested above!
-        synced_count = self.sync_missing_embeddings()
-        print(f"Synced {synced_count} new direct DB signal insertions.")
-
+        # Step 1: Retrieve unclustered signals
         unclustered_signals = self.db.query(Signal).filter(Signal.cluster_id == None).all()
         if not unclustered_signals or len(unclustered_signals) < 3:
-            return "Not enough data points to form new clusters."
+            return "Not enough data points to form new clusters (need at least 3)."
 
+        # Step 2: Retrieve embeddings for these signals
         signal_ids = [str(s.id) for s in unclustered_signals]
         vectors = self.db.query(VectorEmbedding).filter(VectorEmbedding.id.in_(signal_ids)).all()
         vector_dict = {v.id: v.embedding for v in vectors}
@@ -151,16 +43,18 @@ class ClusteringEngine:
                 valid_signals.append(s)
                 
         if len(embeddings) < 3:
-            return "Not enough embeddings found."
+            return "Not enough valid embeddings found for clustering."
 
         embeddings_np = np.array(embeddings)
         
+        # Step 3: Run HDBSCAN
         clusterer = hdbscan.HDBSCAN(min_cluster_size=3, metric='euclidean')
         labels = clusterer.fit_predict(embeddings_np)
 
+        # Step 4: Map signals to clusters and persist
         cluster_map = {}
         for idx, label in enumerate(labels):
-            if label == -1: 
+            if label == -1: # Noise
                 continue
             c_label = f"cluster_{label}"
             if c_label not in cluster_map:
@@ -181,4 +75,4 @@ class ClusteringEngine:
                 sig.cluster_id = cluster_id
                 
         self.db.commit()
-        return f"Created {len(cluster_map)} new clusters."
+        return f"Created {len(cluster_map)} new clusters from {len(valid_signals)} signals."
