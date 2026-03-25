@@ -26,6 +26,8 @@ export const metadata: Metadata = {
   description: "Mastering the art of market intelligence",
 };
 
+import { SessionManager } from "@/components/SessionManager";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,6 +38,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${gildaDisplay.variable} ${bungee.variable} antialiased`}
       >
+        <SessionManager />
         {children}
       </body>
     </html>
