@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from src.database import get_db, engine
@@ -21,6 +22,15 @@ except Exception as e:
     print(f"Database initialization warning: {e}")
 
 app = FastAPI(title="CompeteSmart Intelligence API")
+
+# Allow the Next.js frontend to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
