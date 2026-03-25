@@ -45,6 +45,41 @@ class ClusteringEngine:
             self.db.add(vec)
             processed.append(new_signal)
             
+    def ingest_extracted_content(self):
+        """
+        Pulls raw data from `extracted_content` (populated by teammate's scrapers)
+        and converts it into `signals` for the ML Intelligence Layer.
+        """
+        from src.models import ExtractedContent, Snapshot, Signal
+        
+        unprocessed = self.db.query(ExtractedContent, Snapshot.competitor_id).join(
+            Snapshot, ExtractedContent.snapshot_id == Snapshot.id
+        ).outerjoin(
+            Signal,
+            (ExtractedContent.snapshot_id == Signal.snapshot_id) &
+            (ExtractedContent.content == Signal.content)
+        ).filter(Signal.id == None).all()
+        
+        if not unprocessed:
+            return 0
+            
+        count = 0
+        for ext_content, comp_id in unprocessed:
+            if not ext_content.content or not ext_content.content.strip():
+                continue
+                
+            new_signal = Signal(
+                competitor_id=comp_id,
+                snapshot_id=ext_content.snapshot_id,
+                content=ext_content.content,
+                category=ext_content.content_type
+            )
+            self.db.add(new_signal)
+            count += 1
+            
+        self.db.commit()
+        return count
+
     def sync_missing_embeddings(self):
         """
         Safety Net: If the scraping team writes directly to the Neon PostgreSQL 
@@ -84,7 +119,13 @@ class ClusteringEngine:
         Runs HDBSCAN over all unclustered signals. 
         Requires joining signals with their respective vector embeddings.
         """
-        # Step 1: Auto-Embed whatever the Teammate inserted into DB!
+        from src.models import ExtractedContent, Snapshot, Signal
+        
+        # Step 0: Ingest raw data from your teammate's scraping outputs!
+        ingested = self.ingest_extracted_content()
+        print(f"Ingested {ingested} raw scraped data pieces into semantics.")
+
+        # Step 1: Auto-Embed whatever the Teammate inserted into DB / Ingested above!
         synced_count = self.sync_missing_embeddings()
         print(f"Synced {synced_count} new direct DB signal insertions.")
 
