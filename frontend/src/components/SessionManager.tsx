@@ -21,9 +21,9 @@ export function SessionManager() {
       router.push("/auth");
     }
 
-    // If logged in and on auth page, redirect to home
+    // If logged in and on auth page, redirect to dashboard
     if (token && isAuthPage) {
-      router.push("/");
+      router.push("/dashboard");
     }
   }, [pathname, router]);
 
