@@ -216,8 +216,7 @@ export default function Dashboard() {
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
              Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Chart 1: Trend Over Time */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
@@ -298,76 +297,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* 🔹 BOTTOM SECTION: ACTION */}
-        <div>
-          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Action & Strategy <div className="h-[1px] flex-1 bg-white/5" />
-          </h2>
-          
-          {/* New: Dynamic Experiment Recommendations */}
-          <div className="mb-8 overflow-hidden bg-zinc-900/40 backdrop-blur-sm border border-white/5 rounded-[2.5rem]">
-            <div className="p-8 border-b border-white/5 flex justify-between items-center">
-              <div>
-                <h3 className="font-bold text-xl text-white">Suggested Experiments</h3>
-                <p className="text-zinc-500 text-xs mt-1">Live tactical plays based on competitor shifts</p>
-              </div>
-              <div className="bg-emerald-500/10 text-emerald-400 text-[10px] px-4 py-2 rounded-full border border-emerald-500/20 font-bold uppercase tracking-widest flex items-center gap-2">
-                <CheckCircle2 className="w-3 h-3" /> Analysis Synchronized
-              </div>
-            </div>
-            
-            <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {experiments.length > 0 ? (
-                experiments.map((exp: Experiment, i: number) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedExp(exp.recommended_action)}
-                    className={`p-6 rounded-3xl text-left transition-all relative overflow-hidden group border ${
-                      selectedExp === exp.recommended_action 
-                      ? "bg-violet-600/20 border-violet-500/50 shadow-[0_0_20px_rgba(139,92,246,0.1)]" 
-                      : "bg-white/5 border-white/5 hover:bg-white/10"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className={`p-2 rounded-xl ${selectedExp === exp.recommended_action ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700 transition-colors"}`}>
-                        <Lightbulb className="w-4 h-4" />
-                      </div>
-                      <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                        {exp.trend}
-                      </span>
-                    </div>
-                    <p className="text-sm font-bold text-white mb-2 leading-tight">
-                      {exp.recommended_action}
-                    </p>
-                    <div className="flex items-center gap-4 mt-4">
-                      <div className="flex flex-col">
-                        <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Confidence</span>
-                        <span className="text-xs font-mono text-emerald-400">{(exp.confidence * 100).toFixed(0)}%</span>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[8px] uppercase tracking-widest text-zinc-500 font-bold">Evidence</span>
-                        <span className="text-xs font-mono text-violet-400">{exp.evidence?.length || 0} signals</span>
-                      </div>
-                    </div>
-                    {selectedExp === exp.recommended_action && (
-                      <div className="absolute top-2 right-2">
-                        <div className="bg-violet-500 w-2 h-2 rounded-full animate-ping" />
-                      </div>
-                    )}
-                  </button>
-                ))
-              ) : (
-                <div className="col-span-full py-12 text-center text-zinc-500 text-sm italic">
-                  Run the intelligence pipeline in settings to generate fresh experiments.
-                </div>
-              )}
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
-            
             {/* Chart 4: Opportunity / Whitespace */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
               <div className="flex justify-between items-start mb-10">
@@ -433,14 +364,13 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* 🔹 NEXT THINGS TO DO */}
+        {/* 🔹 SUGGESTED EXPERIMENTS */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Next Things To Do <div className="h-[1px] flex-1 bg-white/5" />
+             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
 
