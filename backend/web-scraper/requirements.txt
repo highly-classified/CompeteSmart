@@ -1,0 +1,7 @@
+# Competitive Intelligence Web Scraper — Python dependencies
+# Install with:  pip install -r requirements.txt
+
+playwright==1.43.0
+beautifulsoup4==4.12.3
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
