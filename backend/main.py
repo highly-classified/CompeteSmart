@@ -6,9 +6,7 @@ from src import models
 from src.intelligence.clustering import ClusteringEngine
 from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
-from src.intelligence.schemas.clustering import SignalInput
-from src.intelligence.schemas.temporal import TrendResult, SaturationResult
-from src.intelligence.schemas.advanced import WhitespaceResult, DriftResult
+from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult, WhitespaceResult, DriftResult
 from typing import List
 
 # Note: Ensure the `vector` extension exists in PostgreSQL before making tables.
