@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, Text, DateTime, Float, ForeignKey, Integer
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 from datetime import datetime
 
@@ -12,7 +12,7 @@ Base = declarative_base()
 # ==========================================
 class Competitor(Base):
     __tablename__ = "competitors"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     domain = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -24,15 +24,15 @@ class ScrapeState(Base):
 
 class Snapshot(Base):
     __tablename__ = "snapshots"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    competitor_id = Column(UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="CASCADE"))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    competitor_id = Column(Integer, ForeignKey("competitors.id", ondelete="CASCADE"))
     url = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ExtractedContent(Base):
     __tablename__ = "extracted_content"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    snapshot_id = Column(UUID(as_uuid=True), ForeignKey("snapshots.id", ondelete="CASCADE"))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    snapshot_id = Column(Integer, ForeignKey("snapshots.id", ondelete="CASCADE"))
     content_type = Column(Text) 
     content = Column(Text, nullable=False)
     content_hash = Column(Text, unique=True)
@@ -43,9 +43,9 @@ class ExtractedContent(Base):
 # ==========================================
 class Signal(Base):
     __tablename__ = "signals"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    competitor_id = Column(UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="CASCADE"))
-    snapshot_id = Column(UUID(as_uuid=True), ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    competitor_id = Column(Integer, ForeignKey("competitors.id", ondelete="CASCADE"))
+    snapshot_id = Column(Integer, ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True)
     content = Column(Text, nullable=False)
     category = Column(Text) 
     cluster_id = Column(Text, nullable=True) 
@@ -60,7 +60,7 @@ class Cluster(Base):
 
 class Trend(Base):
     __tablename__ = "trends"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     cluster_id = Column(Text, ForeignKey("clusters.id"))
     frequency = Column(Integer)
     growth_rate = Column(Float)
