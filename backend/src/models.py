@@ -15,7 +15,6 @@ class Competitor(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     domain = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 class ScrapeState(Base):
     __tablename__ = "scrape_state"
