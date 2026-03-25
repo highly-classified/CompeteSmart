@@ -65,20 +65,20 @@ export default function Hero() {
       </video>
 
       {/* Navigation Bar */}
-      <nav className="relative z-10 w-full flex items-center justify-between px-6 py-6 md:px-10">
+      <nav className="fixed top-0 left-0 z-[60] w-full flex items-center justify-between px-6 py-4 md:px-10 bg-black/30 backdrop-blur-md border-b border-white/10 transition-all duration-300">
         <button
           onClick={() => setMenuOpen(true)}
-          className="flex items-center gap-3 px-5 py-2.5 rounded-full border border-[#94A3B8]/40 hover:bg-[#94A3B8]/10 transition-colors uppercase tracking-widest text-xs font-medium text-[#94A3B8]"
+          className="flex items-center gap-3 px-5 py-2.5 rounded-full border border-white/20 hover:bg-white/10 transition-colors uppercase tracking-widest text-xs font-medium text-white shadow-xl"
         >
           Menu
           <div className="flex flex-col gap-[4px]">
-            <span className="w-7 h-[2px] bg-[#94A3B8] block" />
-            <span className="w-7 h-[2px] bg-[#94A3B8] block" />
+            <span className="w-7 h-[2px] bg-white block" />
+            <span className="w-7 h-[2px] bg-white block" />
           </div>
         </button>
 
         <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block md:static md:translate-x-0 lg:absolute lg:left-1/2 lg:-translate-x-1/2">
-          <span className="font-bungee tracking-wider text-[#94A3B8] drop-shadow-md flex items-baseline">
+          <span className="font-bungee tracking-wider text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)] flex items-baseline select-none">
             <span className="text-3xl md:text-5xl">C</span>
             <span className="text-xl md:text-3xl">OMPETE</span>
             <span className="text-3xl md:text-5xl">S</span>
@@ -87,10 +87,10 @@ export default function Hero() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <a href="#about-us" className="px-6 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors text-sm">
+          <a href="#about-us" className="px-6 py-2.5 rounded-full border border-white/30 hover:bg-white/10 transition-colors text-sm text-white font-medium">
             About Us
           </a>
-          <Link href="/auth" className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-semibold hover:opacity-90 transition-opacity text-center flex items-center">
+          <Link href="/auth" className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-bold hover:scale-105 transition-transform text-center flex items-center shadow-lg">
             Get Started
           </Link>
         </div>
