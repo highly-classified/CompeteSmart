@@ -32,12 +32,13 @@ from config import (
     COMPETITORS,
     CHUNK_MAX_WORDS,
     CHUNK_MIN_WORDS,
+    FORCE_SCRAPE,
     SCRAPE_INTERVAL_HOURS,
     SCHEDULER_POLL_INTERVAL_SECONDS,
 )
 from parser import parse_page
 from scraper import scrape_batch, scrape_url
-from utils import chunk_text, compute_hash
+from utils import chunk_text, compute_hash, normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +49,22 @@ logger = logging.getLogger(__name__)
 
 def _build_url_map() -> dict[str, dict]:
     """
-    Returns a flat dict:  url → {"competitor_id": int, "name": str}
+    Returns a flat dict:  normalised_url → {"competitor_id": int, "name": str}
+
+    All URLs are normalised via normalize_url() at registration time so the
+    rest of the pipeline always operates on canonical URL strings.
     Upserts competitor rows into the DB as a side effect.
     """
     url_map: dict[str, dict] = {}
     for comp in COMPETITORS:
         logger.debug("[scheduler] Upserting competitor: %s (%s)", comp["name"], comp["domain"])
         comp_id = db.upsert_competitor(comp["name"], comp["domain"])
-        for url in comp["urls"]:
-            url_map[url] = {"competitor_id": comp_id, "name": comp["name"]}
-            logger.debug("[scheduler]   Registered URL: %s  (comp_id=%d)", url, comp_id)
+        for raw_url in comp["urls"]:
+            canonical = normalize_url(raw_url)
+            url_map[canonical] = {"competitor_id": comp_id, "name": comp["name"]}
+            logger.debug(
+                "[scheduler]   Registered URL: %s  (comp_id=%d)", canonical, comp_id
+            )
     return url_map
 
 
@@ -137,7 +144,7 @@ def _process_html(
 
     # ── Stage 4: Update scrape_state ─────────────────────────────────────
     logger.info("[pipeline:%s] ── Stage 5: Updating scrape_state …", url)
-    db.update_scrape_state(url, scraped_at)
+    db.update_scrape_state(url)
     logger.info("[pipeline:%s] ── Pipeline complete ✓", url)
 
 
@@ -152,7 +159,8 @@ async def run_cycle(url_map: dict[str, dict], force: bool = False) -> None:
     Parameters
     ----------
     force : bool
-        If True, bypass the 24h gate and scrape every URL (test/debug mode).
+        If True bypass the 24h gate and scrape every URL.  Driven by
+        config.FORCE_SCRAPE or the --test CLI flag.
     """
     all_urls = list(url_map.keys())
     logger.info("[cycle] Total tracked URLs: %d", len(all_urls))
@@ -175,12 +183,13 @@ async def run_cycle(url_map: dict[str, dict], force: bool = False) -> None:
     logger.info("[cycle]    Scraped OK: %d  Failed: %d", success_count, fail_count)
 
     for url, html in results.items():
+        print(f"[SCRAPER] Processing URL: {url}")
         if html is None:
             logger.error("[cycle] ✗ Skipping %s — scrape returned None after all retries.", url)
             continue
 
         comp_info = url_map[url]
-        logger.info("[cycle] → Processing pipeline for: %s", url)
+        logger.info("[cycle] → Running pipeline for: %s", url)
         try:
             _process_html(url, html, comp_info["competitor_id"], scraped_at)
         except Exception:
@@ -318,7 +327,7 @@ async def _scheduler_loop(url_map: dict[str, dict]) -> None:
     while True:
         logger.info("[scheduler] ═══ Cycle start  %s ═══", datetime.utcnow().isoformat())
         try:
-            await run_cycle(url_map)
+            await run_cycle(url_map, force=FORCE_SCRAPE)
         except Exception:
             logger.error("[scheduler] Unhandled cycle error:\n%s", traceback.format_exc())
 
