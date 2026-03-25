@@ -1,4 +1,15 @@
-.env 
-node_modules
 
-venv
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Env files
+.env
+
+# Node
+node_modules/
+
+# OS
+.DS_Store
+>>>>>>> 3be3d8ff276a2834349c78d4f80039758d917d05
