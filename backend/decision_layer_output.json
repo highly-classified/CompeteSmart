@@ -1,54 +1,839 @@
 [
   {
-    "cluster": "Budget Tools",
-    "priority": "High Priority",
-    "experiment": "Test enterprise-focused pricing with relevant messaging in 'Budget Tools' to capture untapped segment.",
-    "counterfactual": {
-      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
-      "explore_whitespace": "High differentiation by targeting enterprise, strong growth potential in a whitespace."
-    },
-    "risk": "Low Risk",
-    "reasoning": "Cluster 'Budget Tools' has 25.0% saturation and a trend score of 0.57. The generated priority score is 0.64 (High Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'enterprise' to avoid high competition.",
-    "source": "NextGen_36",
-    "original_text": "Affordable, high-value tools tailored for students to save money."
+    "insight": "Cluster 'Intense cleaning (2 bathrooms) 4.80 (4.9M) \u20b91,016 ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_895622cd",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.907,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Intense cleaning (2 bathrooms) 4.80 (4.9M) \u20b91,016 ' to capture untapped segment.",
+    "evidence": [
+      "2",
+      "18",
+      "29",
+      "55",
+      "64"
+    ]
   },
   {
-    "cluster": "AI Automation",
-    "priority": "Low Priority",
-    "experiment": "Test freelancers-focused pricing with relevant messaging in 'AI Automation' to capture untapped segment.",
-    "counterfactual": {
-      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
-      "explore_whitespace": "High differentiation by targeting freelancers, strong growth potential in a whitespace."
-    },
-    "risk": "Medium Risk",
-    "reasoning": "Cluster 'AI Automation' has 55.0% saturation and a trend score of -0.01. The generated priority score is 0.17 (Low Priority). Risk assessed as Medium Risk. Recommending to explore whitespace targeting 'freelancers' to avoid high competition.",
-    "source": "NextGen_14",
-    "original_text": "Automate your workflow with cutting-edge AI designed specifically for enterprise."
+    "insight": "Cluster 'Ceiling & fan cobweb dusting (upto 1 room)' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_e1b4d477",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.914,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Ceiling & fan cobweb dusting (upto 1 room)' to capture untapped segment.",
+    "evidence": [
+      "117",
+      "8",
+      "27",
+      "60",
+      "123"
+    ]
   },
   {
-    "cluster": "Premium Security",
-    "priority": "Medium Priority",
-    "experiment": "Test students-focused pricing with relevant messaging in 'Premium Security' to capture untapped segment.",
-    "counterfactual": {
-      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
-      "explore_whitespace": "High differentiation by targeting students, strong growth potential in a whitespace."
-    },
-    "risk": "Low Risk",
-    "reasoning": "Cluster 'Premium Security' has 15.0% saturation and a trend score of 0.42. The generated priority score is 0.59 (Medium Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'students' to avoid high competition.",
-    "source": "NextGen_55",
-    "original_text": "Enterprise-grade security solutions with dedicated support for enterprise."
+    "insight": "Cluster 'Professional Home Deep Cleaning service near me' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_f3bc00f9",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.907,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional Home Deep Cleaning service near me' to capture untapped segment.",
+    "evidence": [
+      "15",
+      "21",
+      "32",
+      "33",
+      "68"
+    ]
   },
   {
-    "cluster": "Eco-Friendly Tech",
-    "priority": "Medium Priority",
-    "experiment": "Test enterprise-focused pricing with relevant messaging in 'Eco-Friendly Tech' to capture untapped segment.",
-    "counterfactual": {
-      "follow_competitors": "High competition, low differentiation. Likely leads to price wars and high customer acquisition costs.",
-      "explore_whitespace": "High differentiation by targeting enterprise, strong growth potential in a whitespace."
-    },
-    "risk": "Low Risk",
-    "reasoning": "Cluster 'Eco-Friendly Tech' has 5.0% saturation and a trend score of 0.04. The generated priority score is 0.40 (Medium Priority). Risk assessed as Low Risk. Recommending to explore whitespace targeting 'enterprise' to avoid high competition.",
-    "source": "TechCorp_71",
-    "original_text": "Sustainable and green technology solutions built for freelancers."
+    "insight": "Cluster 'Haircut for kids 4.85 (106K) \u20b9259' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_dc8699c8",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Haircut for kids 4.85 (106K) \u20b9259' to capture untapped segment.",
+    "evidence": [
+      "19",
+      "51",
+      "175",
+      "180"
+    ]
+  },
+  {
+    "insight": "Cluster 'Regular ceiling fan installation 4.85 (48K) \u20b999' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_1ea2a7c6",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Regular ceiling fan installation 4.85 (48K) \u20b999' to capture untapped segment.",
+    "evidence": [
+      "26",
+      "145",
+      "169",
+      "179"
+    ]
+  },
+  {
+    "insight": "Cluster 'Full Home/ Move-in Cleaning 4.82 (1.6 M bookings) ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_4881b6b7",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Full Home/ Move-in Cleaning 4.82 (1.6 M bookings) ' to capture untapped segment.",
+    "evidence": [
+      "34",
+      "49",
+      "78",
+      "101"
+    ]
+  },
+  {
+    "insight": "Cluster 'Cleaning & stain removal from rooms, kitchen, bath' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_b7f0ca72",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.91,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Cleaning & stain removal from rooms, kitchen, bath' to capture untapped segment.",
+    "evidence": [
+      "35",
+      "52",
+      "62",
+      "66",
+      "107"
+    ]
+  },
+  {
+    "insight": "Cluster 'Crystal rose pedicure 4.83 (198K) \u20b9859 Roll-on wax' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_6dffd750",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Crystal rose pedicure 4.83 (198K) \u20b9859 Roll-on wax' to capture untapped segment.",
+    "evidence": [
+      "73",
+      "95",
+      "100",
+      "158",
+      "191"
+    ]
+  },
+  {
+    "insight": "Cluster 'Additional, one mirror is already covered in bathr' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_9da5c8f2",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.925,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Additional, one mirror is already covered in bathr' to capture untapped segment.",
+    "evidence": [
+      "82",
+      "143",
+      "184"
+    ]
+  },
+  {
+    "insight": "Cluster 'How soon can I use the bathroom after the cleaning' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_51509b89",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.925,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'How soon can I use the bathroom after the cleaning' to capture untapped segment.",
+    "evidence": [
+      "99",
+      "102",
+      "104"
+    ]
+  },
+  {
+    "insight": "Cluster 'Kitchen appliances cleaning 4.81 (61K reviews) Sta' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_4e9dd50a",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.905,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Kitchen appliances cleaning 4.81 (61K reviews) Sta' to capture untapped segment.",
+    "evidence": [
+      "1",
+      "5",
+      "14",
+      "17",
+      "28"
+    ]
+  },
+  {
+    "insight": "Cluster '3 Reasons to Book a Professional Bathroom Cleaning' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_7f96af16",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.908,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in '3 Reasons to Book a Professional Bathroom Cleaning' to capture untapped segment.",
+    "evidence": [
+      "44",
+      "46",
+      "63",
+      "75",
+      "92"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great service. I am satisfied with the cleaning.' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_43916427",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.905,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great service. I am satisfied with the cleaning.' to capture untapped segment.",
+    "evidence": [
+      "10",
+      "11",
+      "50",
+      "54",
+      "80"
+    ]
+  },
+  {
+    "insight": "Cluster 'Equipment Used: Hand scrubber, microfiber duster &' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_6aed6cb4",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.925,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Equipment Used: Hand scrubber, microfiber duster &' to capture untapped segment.",
+    "evidence": [
+      "24",
+      "83",
+      "153"
+    ]
+  },
+  {
+    "insight": "Cluster 'Wash basin blockage removal 4.79 (31K) \u20b9199' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_c7e4b6eb",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Wash basin blockage removal 4.79 (31K) \u20b9199' to capture untapped segment.",
+    "evidence": [
+      "39",
+      "118",
+      "173",
+      "176"
+    ]
+  },
+  {
+    "insight": "Cluster 'Once you book a service on the Urban Company app, ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_7832f203",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Once you book a service on the Urban Company app, ' to capture untapped segment.",
+    "evidence": [
+      "84",
+      "125",
+      "161",
+      "163"
+    ]
+  },
+  {
+    "insight": "Cluster 'Home services at your doorstep' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_0ca7e61a",
+    "trend": "High Priority",
+    "confidence": 0.1,
+    "risk": 0.904,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Home services at your doorstep' to capture untapped segment.",
+    "evidence": [
+      "4",
+      "9",
+      "12",
+      "20",
+      "25"
+    ]
+  },
+  {
+    "insight": "Cluster 'UC Promise Verified Professionals Hassle Free Book' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_c2d13ae3",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.925,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'UC Promise Verified Professionals Hassle Free Book' to capture untapped segment.",
+    "evidence": [
+      "58",
+      "162",
+      "198"
+    ]
+  },
+  {
+    "insight": "Cluster 'Premium quality professional home cleaning you can' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_e2ca6d74",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.913,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Premium quality professional home cleaning you can' to capture untapped segment.",
+    "evidence": [
+      "199",
+      "266",
+      "269",
+      "284",
+      "361"
+    ]
+  },
+  {
+    "insight": "Cluster 'Reliable and fast urban services across Chennai av' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_ae7d208d",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Reliable and fast urban services across Chennai av' to capture untapped segment.",
+    "evidence": [
+      "200",
+      "207",
+      "208",
+      "305"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent budget-friendly urban services across ch' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_e17d99bf",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent budget-friendly urban services across ch' to capture untapped segment.",
+    "evidence": [
+      "202",
+      "206",
+      "299",
+      "301"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great simplifying urban services across chennai fo' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_98d9e5d7",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great simplifying urban services across chennai fo' to capture untapped segment.",
+    "evidence": [
+      "203",
+      "205",
+      "210",
+      "302"
+    ]
+  },
+  {
+    "insight": "Cluster 'Quality affordable urban services across chennai s' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_70c98eba",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Quality affordable urban services across chennai s' to capture untapped segment.",
+    "evidence": [
+      "211",
+      "297",
+      "303",
+      "307"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional verified professionals for all your u' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_724cd781",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.911,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional verified professionals for all your u' to capture untapped segment.",
+    "evidence": [
+      "213",
+      "214",
+      "217",
+      "218",
+      "222"
+    ]
+  },
+  {
+    "insight": "Cluster 'Premium quality urban services across Chennai you ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_48cfc61d",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Premium quality urban services across Chennai you ' to capture untapped segment.",
+    "evidence": [
+      "215",
+      "221",
+      "310",
+      "313"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent reliable and fast bathroom and toilet cl' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_2a169d78",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent reliable and fast bathroom and toilet cl' to capture untapped segment.",
+    "evidence": [
+      "224",
+      "231",
+      "233",
+      "321"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional budget-friendly bathroom and toilet c' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_0b5cbf47",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional budget-friendly bathroom and toilet c' to capture untapped segment.",
+    "evidence": [
+      "225",
+      "230",
+      "323",
+      "326"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great book bathroom and toilet cleaning now and sa' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_10250190",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.913,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great book bathroom and toilet cleaning now and sa' to capture untapped segment.",
+    "evidence": [
+      "226",
+      "253",
+      "259",
+      "274",
+      "322"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional quick bathroom and toilet cleaning bo' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_33e7863a",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.911,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional quick bathroom and toilet cleaning bo' to capture untapped segment.",
+    "evidence": [
+      "235",
+      "227",
+      "229",
+      "251",
+      "280"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great value-for-money bathroom and toilet cleaning' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_78466709",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great value-for-money bathroom and toilet cleaning' to capture untapped segment.",
+    "evidence": [
+      "234",
+      "228",
+      "327",
+      "330"
+    ]
+  },
+  {
+    "insight": "Cluster 'Quality expert technicians providing the best bath' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_7928628f",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Quality expert technicians providing the best bath' to capture untapped segment.",
+    "evidence": [
+      "236",
+      "243",
+      "246",
+      "340"
+    ]
+  },
+  {
+    "insight": "Cluster 'Premium quality bathroom and toilet cleaning you c' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_4b4b4d61",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Premium quality bathroom and toilet cleaning you c' to capture untapped segment.",
+    "evidence": [
+      "237",
+      "240",
+      "245",
+      "333",
+      "342"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent our bathroom and toilet cleaning profess' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_67ff20d6",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent our bathroom and toilet cleaning profess' to capture untapped segment.",
+    "evidence": [
+      "242",
+      "244",
+      "332",
+      "339"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great budget-friendly professional home cleaning f' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_b4474500",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.911,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great budget-friendly professional home cleaning f' to capture untapped segment.",
+    "evidence": [
+      "248",
+      "255",
+      "277",
+      "281",
+      "352"
+    ]
+  },
+  {
+    "insight": "Cluster 'Reliable and fast professional home cleaning avail' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_d464e153",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.909,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Reliable and fast professional home cleaning avail' to capture untapped segment.",
+    "evidence": [
+      "249",
+      "254",
+      "258",
+      "275",
+      "279"
+    ]
+  },
+  {
+    "insight": "Cluster 'Affordable professional home cleaning starting at ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_b9d2035d",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.914,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Affordable professional home cleaning starting at ' to capture untapped segment.",
+    "evidence": [
+      "250",
+      "378",
+      "278",
+      "348",
+      "354"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional simplifying professional home cleanin' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_30bc88ee",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.913,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional simplifying professional home cleanin' to capture untapped segment.",
+    "evidence": [
+      "256",
+      "273",
+      "276",
+      "345",
+      "351"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent experience top-rated professional home c' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_d19c878b",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent experience top-rated professional home c' to capture untapped segment.",
+    "evidence": [
+      "260",
+      "268",
+      "285",
+      "365",
+      "388"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great expert technicians providing the best profes' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_337aedda",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great expert technicians providing the best profes' to capture untapped segment.",
+    "evidence": [
+      "261",
+      "286",
+      "291",
+      "358",
+      "380"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great trusted by millions for quality professional' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_b482d415",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.913,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great trusted by millions for quality professional' to capture untapped segment.",
+    "evidence": [
+      "262",
+      "267",
+      "290",
+      "294",
+      "360"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent safety-first professional home cleaning ' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_0160f7dc",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.914,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent safety-first professional home cleaning ' to capture untapped segment.",
+    "evidence": [
+      "263",
+      "270",
+      "288",
+      "293",
+      "356"
+    ]
+  },
+  {
+    "insight": "Cluster 'Excellent verified professionals for all your prof' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_ab4958e8",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.911,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Excellent verified professionals for all your prof' to capture untapped segment.",
+    "evidence": [
+      "264",
+      "271",
+      "295",
+      "357",
+      "363"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great hassle-free professional home cleaning deliv' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_1ceac80f",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.914,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great hassle-free professional home cleaning deliv' to capture untapped segment.",
+    "evidence": [
+      "265",
+      "287",
+      "289",
+      "362",
+      "382"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional value-for-money professional home cle' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_7cbc3d2e",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional value-for-money professional home cle' to capture untapped segment.",
+    "evidence": [
+      "272",
+      "282",
+      "346",
+      "349",
+      "375"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional our professional home cleaning profes' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_cf43e803",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional our professional home cleaning profes' to capture untapped segment.",
+    "evidence": [
+      "292",
+      "359",
+      "366",
+      "383"
+    ]
+  },
+  {
+    "insight": "Cluster 'Great value-for-money urban services across chenna' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_4f1edf5e",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.905,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Great value-for-money urban services across chenna' to capture untapped segment.",
+    "evidence": [
+      "201",
+      "204",
+      "209",
+      "212",
+      "216"
+    ]
+  },
+  {
+    "insight": "Cluster 'Simplifying bathroom and toilet cleaning for every' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_1624ad15",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Simplifying bathroom and toilet cleaning for every' to capture untapped segment.",
+    "evidence": [
+      "232",
+      "320",
+      "324",
+      "329"
+    ]
+  },
+  {
+    "insight": "Cluster 'Professional trusted by millions for quality bathr' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_0e681855",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.908,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Professional trusted by millions for quality bathr' to capture untapped segment.",
+    "evidence": [
+      "238",
+      "239",
+      "241",
+      "247",
+      "334"
+    ]
+  },
+  {
+    "insight": "Cluster 'Quality get your professional home cleaning done t' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_719441b5",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Quality get your professional home cleaning done t' to capture untapped segment.",
+    "evidence": [
+      "252",
+      "257",
+      "283",
+      "325",
+      "331"
+    ]
+  },
+  {
+    "insight": "Cluster 'Sofa & upholstery wet shampooing' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_a6b3cd25",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Sofa & upholstery wet shampooing' to capture untapped segment.",
+    "evidence": [
+      "3",
+      "57",
+      "59",
+      "138"
+    ]
+  },
+  {
+    "insight": "Cluster 'Can I see the process of bathroom deep cleaning be' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_6d883cd1",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.917,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Can I see the process of bathroom deep cleaning be' to capture untapped segment.",
+    "evidence": [
+      "6",
+      "23",
+      "42",
+      "53",
+      "197"
+    ]
+  },
+  {
+    "insight": "Cluster '*Prices may vary during sale time.' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_45bac6a3",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.913,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in '*Prices may vary during sale time.' to capture untapped segment.",
+    "evidence": [
+      "7",
+      "69",
+      "72",
+      "79",
+      "124"
+    ]
+  },
+  {
+    "insight": "Cluster 'Includes utensil removal & placement for upto 2 ki' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_abf9355c",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.925,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Includes utensil removal & placement for upto 2 ki' to capture untapped segment.",
+    "evidence": [
+      "13",
+      "48",
+      "152"
+    ]
+  },
+  {
+    "insight": "Cluster 'It will develop stains over time and dirt deposits' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_dfaf3b55",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.914,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'It will develop stains over time and dirt deposits' to capture untapped segment.",
+    "evidence": [
+      "16",
+      "41",
+      "134",
+      "137",
+      "144"
+    ]
+  },
+  {
+    "insight": "Cluster 'Nice and clean work done by the team' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_94388c85",
+    "trend": "High Priority",
+    "confidence": 0.09,
+    "risk": 0.908,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Nice and clean work done by the team' to capture untapped segment.",
+    "evidence": [
+      "22",
+      "30",
+      "38",
+      "43",
+      "81"
+    ]
+  },
+  {
+    "insight": "Cluster 'Soap contains fatty acids and the' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_186d4c9d",
+    "trend": "High Priority",
+    "confidence": 0.07,
+    "risk": 0.933,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Soap contains fatty acids and the' to capture untapped segment.",
+    "evidence": [
+      "56",
+      "61"
+    ]
+  },
+  {
+    "insight": "Cluster 'No items in your cart' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_090da158",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'No items in your cart' to capture untapped segment.",
+    "evidence": [
+      "71",
+      "109",
+      "133",
+      "187"
+    ]
+  },
+  {
+    "insight": "Cluster 'What are the Equipment and Chemicals used?' is showing a High Priority trend with 60.0% momentum.",
+    "cluster_id": "CL_b1665984",
+    "trend": "High Priority",
+    "confidence": 0.08,
+    "risk": 0.92,
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'What are the Equipment and Chemicals used?' to capture untapped segment.",
+    "evidence": [
+      "97",
+      "129",
+      "148",
+      "154"
+    ]
   }
 ]
