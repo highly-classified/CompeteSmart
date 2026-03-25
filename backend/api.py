@@ -8,7 +8,12 @@ from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult, WhitespaceResult, DriftResult
 from src.auth import get_current_user
-from typing import List, Dict
+from typing import List, Dict, Optional
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import os
+import json
+from src.execution_copilot import chat_with_experiment
 
 # Note: Ensure the `vector` extension exists in PostgreSQL before making tables.
 # CREATE EXTENSION IF NOT EXISTS vector;
@@ -21,6 +26,23 @@ except Exception as e:
     print(f"Database initialization warning: {e}")
 
 app = FastAPI(title="CompeteSmart Intelligence API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # In production, restrict this to your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# --- Copilot & Experiment Schemas ---
+class CopilotChatRequest(BaseModel):
+    experiment_text: str
+    user_query: str
+    chat_history: Optional[List[Dict[str, str]]] = []
+
+class CopilotChatResponse(BaseModel):
+    response: str
 
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -351,3 +373,34 @@ def get_chart_risk_saturation(db: Session = Depends(get_db)):
         })
         
     return chart_data
+
+# ==========================================
+# Copilot & Decision Layer Output
+# ==========================================
+
+@app.get("/api/experiments")
+def get_suggested_experiments():
+    """Returns the latest experiment recommendations from the decision layer."""
+    output_path = "decision_layer_output.json"
+    if not os.path.exists(output_path):
+        return []
+    
+    try:
+        with open(output_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error reading decision output: {e}")
+        return []
+
+@app.post("/api/copilot/chat", response_model=CopilotChatResponse)
+def copilot_chat(request: CopilotChatRequest):
+    """Answers user queries regarding a chosen experiment using AI RAG."""
+    try:
+        response_text = chat_with_experiment(
+            experiment_text=request.experiment_text,
+            user_query=request.user_query,
+            chat_history=request.chat_history
+        )
+        return CopilotChatResponse(response=response_text)
+    except Exception as e:
+        return CopilotChatResponse(response=f"Copilot error: {str(e)}")
