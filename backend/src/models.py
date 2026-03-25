@@ -15,7 +15,6 @@ class Competitor(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(Text, nullable=False)
     domain = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
 
 class ScrapeState(Base):
     __tablename__ = "scrape_state"
@@ -43,7 +42,7 @@ class ExtractedContent(Base):
 # ==========================================
 class Signal(Base):
     __tablename__ = "signals"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     competitor_id = Column(UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="CASCADE"))
     snapshot_id = Column(UUID(as_uuid=True), ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True)
     content = Column(Text, nullable=False)
@@ -60,7 +59,7 @@ class Cluster(Base):
 
 class Trend(Base):
     __tablename__ = "trends"
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     cluster_id = Column(Text, ForeignKey("clusters.id"))
     frequency = Column(Integer)
     growth_rate = Column(Float)
