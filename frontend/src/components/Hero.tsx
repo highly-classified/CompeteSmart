@@ -62,17 +62,17 @@ export default function Hero() {
       <nav className="relative z-10 w-full flex items-center justify-between px-6 py-6 md:px-10">
         <button
           onClick={() => setMenuOpen(true)}
-          className="flex items-center gap-3 px-5 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors uppercase tracking-widest text-xs font-medium"
+          className="flex items-center gap-3 px-5 py-2.5 rounded-full border border-[#94A3B8]/40 hover:bg-[#94A3B8]/10 transition-colors uppercase tracking-widest text-xs font-medium text-[#94A3B8]"
         >
           Menu
           <div className="flex flex-col gap-[4px]">
-            <span className="w-7 h-[2px] bg-foreground block" />
-            <span className="w-7 h-[2px] bg-foreground block" />
+            <span className="w-7 h-[2px] bg-[#94A3B8] block" />
+            <span className="w-7 h-[2px] bg-[#94A3B8] block" />
           </div>
         </button>
 
         <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block md:static md:translate-x-0 lg:absolute lg:left-1/2 lg:-translate-x-1/2">
-          <span className="font-bungee tracking-wider text-foreground drop-shadow-md flex items-baseline">
+          <span className="font-bungee tracking-wider text-[#94A3B8] drop-shadow-md flex items-baseline">
             <span className="text-3xl md:text-5xl">C</span>
             <span className="text-xl md:text-3xl">OMPETE</span>
             <span className="text-3xl md:text-5xl">S</span>
@@ -81,7 +81,7 @@ export default function Hero() {
         </div>
 
         <div className="hidden md:flex items-center gap-3">
-          <button className="px-6 py-2.5 rounded-full border border-foreground/30 hover:bg-foreground/10 transition-colors text-sm">
+          <button className="px-6 py-2.5 rounded-full border border-[#94A3B8]/40 hover:bg-[#94A3B8]/10 transition-colors text-sm text-[#94A3B8]">
             About Us
           </button>
           <button className="px-6 py-2.5 rounded-full bg-gradient-to-r from-[hsl(220,70%,78%)] to-[hsl(40,80%,82%)] text-black uppercase tracking-wide text-sm font-semibold hover:opacity-90 transition-opacity">
