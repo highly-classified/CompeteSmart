@@ -9,11 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-<<<<<<< HEAD
     "autoprefixer": "^10.4.27",
-=======
     "bcryptjs": "^3.0.3",
->>>>>>> ab254a4ce259a7107d05e406e9cc4e22926cec0f
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.6.0",
     "next-auth": "^4.24.13",
