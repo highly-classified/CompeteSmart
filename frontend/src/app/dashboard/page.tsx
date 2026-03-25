@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -18,7 +18,7 @@ import {
   Legend,
   ResponsiveContainer,
   ZAxis,
-  ReferenceArea
+  ReferenceArea,
 } from "recharts";
 import { Target, TrendingUp, AlertTriangle, Lightbulb, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
@@ -26,49 +26,39 @@ import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CopilotChat } from "@/components/CopilotChat";
 
-// --- MOCK DATA --- //
+// ─────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────
 
-// 1. Trend Over Time
-const trendData = [
-  { time: "Jan", AI: 10, Pricing: 40, Quality: 30 },
-  { time: "Feb", AI: 20, Pricing: 35, Quality: 30 },
-  { time: "Mar", AI: 45, Pricing: 25, Quality: 32 },
-  { time: "Apr", AI: 65, Pricing: 20, Quality: 35 },
-  { time: "May", AI: 85, Pricing: 15, Quality: 35 },
-];
+type TrendPoint = { time: string;[key: string]: string | number };
+type PositioningPoint = { name: string; x: number; y: number; dominant_cluster: string; fill: string };
+type DistributionPoint = { name: string; value: number; fill: string };
+type WhitespacePoint = { name: string; x: number; y: number; fill: string };
+type ComparisonPoint = { name: string; pricing: number; quality: number; ai: number; convenience: number };
 
-// 2. Competitor Positioning Map (X=Affordable<->Premium, Y=Feature<->Outcome)
-const positioningData = [
-  { name: "Urban Company", x: 80, y: 85, fill: "#a78bfa" }, // Lightened for dark mode
-  { name: "Comp. A", x: 20, y: 30, fill: "#f87171" },
-  { name: "Comp. B", x: 30, y: 40, fill: "#fbbf24" },
-  { name: "Comp. C", x: 45, y: 20, fill: "#60a5fa" },
-];
+// ─────────────────────────────────────────────
+// Config
+// ─────────────────────────────────────────────
 
-// 3. Messaging Distribution (Donut)
-const distributionData = [
-  { name: "Pricing", value: 50, fill: "#f87171" },
-  { name: "Quality", value: 20, fill: "#60a5fa" },
-  { name: "Convenience", value: 15, fill: "#34d399" },
-  { name: "AI/Tech", value: 10, fill: "#a78bfa" },
-  { name: "Speed", value: 5, fill: "#f472b6" },
-];
+const API_BASE = "http://127.0.0.1:8000";
+const CLIENT_ID = 1; // Default client ID for the test login
 
-// 4. Opportunity / Whitespace (Quadrant)
-// X = Competition (frequency), Y = Growth Rate
-const whitespaceData = [
-  { name: "AI Messaging", x: 20, y: 90, fill: "#34d399" }, // Low comp, high growth
-  { name: "Pricing", x: 90, y: 10, fill: "#f87171" },      // High comp, low growth
-  { name: "Quality", x: 60, y: 40, fill: "#60a5fa" },
-  { name: "Convenience", x: 40, y: 60, fill: "#fbbf24" },
-];
+// Color palette for dynamic keys
+const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
+const PIE_COLORS = ["#f87171", "#60a5fa", "#34d399", "#a78bfa", "#f472b6"];
+const COMPETITOR_COLORS = {
+  pricing: "#f87171",
+  quality: "#60a5fa",
+  ai: "#a78bfa",
+  convenience: "#34d399",
+};
 
-// 5. Competitor Comparison (Grouped Bar)
-const comparisonData = [
-  { name: "Urban Company", Pricing: 20, Quality: 80, AI: 90, Convenience: 85 },
-  { name: "Competitor A", Pricing: 90, Quality: 40, AI: 10, Convenience: 30 },
-  { name: "Competitor B", Pricing: 85, Quality: 50, AI: 20, Convenience: 40 },
-];
+const QUADRANT_FILLS: Record<string, string> = {
+  "BEST opportunity": "#34d399",
+  Crowded: "#fbbf24",
+  Weak: "#60a5fa",
+  Avoid: "#f87171",
+};
 
 interface Experiment {
   insight: string;
@@ -81,6 +71,8 @@ interface Experiment {
 }
 
 // Custom Tooltips
+// ─────────────────────────────────────────────
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -90,7 +82,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
           {payload.map((p: any, i: number) => (
             <div key={i} className="flex items-center justify-between gap-4">
               <span className="text-zinc-400 capitalize">{p.name}:</span>
-              <span className="font-mono font-medium" style={{ color: p.color || p.fill }}>{p.value}</span>
+              <span className="font-mono font-medium" style={{ color: p.color || p.fill }}>
+                {p.value}
+              </span>
             </div>
           ))}
         </div>
@@ -107,12 +101,26 @@ const ScatterTooltip = ({ active, payload }: any) => {
       <div className="bg-zinc-900/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl text-sm ring-1 ring-white/5">
         <p className="font-bold text-white mb-2 pb-2 border-b border-white/5">{data.name}</p>
         <div className="space-y-1">
+          {data.dominant_cluster && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Cluster:</span>
+              <span className="text-white font-mono text-xs">{data.dominant_cluster}</span>
+            </div>
+          )}
+          {data.quadrant && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-zinc-400">Quadrant:</span>
+              <span className="font-mono font-medium" style={{ color: data.fill }}>
+                {data.quadrant}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-4">
-            <span className="text-zinc-400">Positioning (X):</span>
+            <span className="text-zinc-400">X:</span>
             <span className="text-white font-mono">{data.x}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span className="text-zinc-400">Strategy (Y):</span>
+            <span className="text-zinc-400">Y:</span>
             <span className="text-white font-mono">{data.y}</span>
           </div>
         </div>
@@ -122,6 +130,88 @@ const ScatterTooltip = ({ active, payload }: any) => {
   return null;
 };
 
+// ─────────────────────────────────────────────
+// Loading Screen
+// ─────────────────────────────────────────────
+
+function IntelligenceLoader() {
+  const [progress, setProgress] = useState(0);
+  const [statusText, setStatusText] = useState("Fetching competitor signals...");
+  const STATUS_STEPS = [
+    "Fetching competitor signals...",
+    "Processing cluster embeddings...",
+    "Calculating saturation scores...",
+    "Analyzing whitespace opportunities...",
+    "Compiling live intelligence...",
+  ];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setProgress((prev) => Math.min(prev + 3, 90));
+    }, 150);
+
+    let step = 0;
+    const textInterval = setInterval(() => {
+      step = (step + 1) % STATUS_STEPS.length;
+      setStatusText(STATUS_STEPS[step]);
+    }, 1800);
+
+    return () => {
+      clearInterval(interval);
+      clearInterval(textInterval);
+    };
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-8">
+      <div className="relative w-32 h-32">
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
+          <circle
+            cx="60" cy="60" r="54"
+            fill="none" stroke="#a78bfa" strokeWidth="3" strokeLinecap="round"
+            strokeDasharray={2 * Math.PI * 54}
+            strokeDashoffset={2 * Math.PI * 54 * (1 - progress / 100)}
+            className="transition-all duration-300 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="text-white text-xl font-bold font-mono">{progress}%</span>
+        </div>
+      </div>
+
+      <div className="text-center space-y-2">
+        <p className="text-xs uppercase tracking-[0.3em] font-black text-violet-400">
+          Compiling Live Intelligence
+        </p>
+        <motion.p
+          key={statusText}
+          initial={{ opacity: 0, y: 5 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="text-zinc-500 text-sm"
+        >
+          {statusText}
+        </motion.p>
+      </div>
+
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-pulse"
+            style={{ animationDelay: `${i * 0.2}s` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Dashboard Component
+// ─────────────────────────────────────────────
+
 export default function Dashboard() {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
@@ -129,22 +219,188 @@ export default function Dashboard() {
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
 
+  // ── State ──
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+  const [trendKeys, setTrendKeys] = useState<string[]>([]);
+  const [positioningData, setPositioningData] = useState<PositioningPoint[]>([]);
+  const [distributionData, setDistributionData] = useState<DistributionPoint[]>([]);
+  const [whitespaceData, setWhitespaceData] = useState<WhitespacePoint[]>([]);
+  const [comparisonData, setComparisonData] = useState<ComparisonPoint[]>([]);
+
+  // ── Summary Cards derived from live data ──
+  const fastestGrowingCluster = trendKeys.length ? trendKeys[0] : "—";
+  const highestSaturation = distributionData.length ? distributionData[0].name : "—";
+  const topOpportunity = whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
+
+  // ─────────────────────────────────────────
+  // Fetch helper — 8s timeout per request
+  // ─────────────────────────────────────────
+  async function apiFetch(path: string) {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
+    try {
+      const res = await fetch(`${API_BASE}${path}`, { headers, signal: controller.signal });
+      if (!res.ok) throw new Error(`${path} → ${res.status} ${res.statusText}`);
+      return res.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // Data mapping helpers
+  // ─────────────────────────────────────────
+
+  function mapTrends(raw: { clusters: { name: string; data: { date: string; value: number }[] }[] }): {
+    rows: TrendPoint[];
+    keys: string[];
+  } {
+    // Build a combined time-series table keyed on "date"
+    const dateMap: Record<string, TrendPoint> = {};
+    const keys: string[] = [];
+
+    raw.clusters.forEach((cluster) => {
+      keys.push(cluster.name);
+      cluster.data.forEach(({ date, value }) => {
+        if (!dateMap[date]) dateMap[date] = { time: date };
+        dateMap[date][cluster.name] = value;
+      });
+    });
+
+    const rows = Object.values(dateMap).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+    return { rows, keys };
+  }
+
+  function mapPositioning(raw: { competitors: { name: string; x: number; y: number; dominant_cluster: string }[] }): PositioningPoint[] {
+    return raw.competitors.map((c, i) => ({
+      ...c,
+      fill: CLUSTER_COLORS[i % CLUSTER_COLORS.length],
+    }));
+  }
+
+  function mapDistribution(raw: { clusters: { name: string; percentage: number }[] }): DistributionPoint[] {
+    return raw.clusters.map((c, i) => ({
+      name: c.name,
+      value: c.percentage,
+      fill: PIE_COLORS[i % PIE_COLORS.length],
+    }));
+  }
+
+  function mapWhitespace(raw: { name: string; competition: number; growth: number; quadrant: string }[]): WhitespacePoint[] {
+    return raw.map((d) => ({
+      name: d.name,
+      x: d.competition,
+      y: d.growth,
+      fill: QUADRANT_FILLS[d.quadrant] ?? "#a78bfa",
+    }));
+  }
+
+  function mapComparison(raw: { competitor: string; pricing: number; quality: number; ai: number; convenience: number }[]): ComparisonPoint[] {
+    return raw.map((r) => ({ ...r, name: r.competitor }));
+  }
+
+  // ─────────────────────────────────────────
+  // Fetch all on mount — resilient: one failure won't block the dashboard
+  // ─────────────────────────────────────────
   useEffect(() => {
-    fetch("http://localhost:8000/api/experiments")
-      .then(res => res.json())
-      .then(data => {
-        setExperiments(data);
-        if (data.length > 0) setSelectedExp(data[0].recommended_action);
-      })
-      .catch(err => console.error("Failed to fetch experiments:", err));
+    async function loadDashboard() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [trendsRes, posRes, distRes, oppRes, compRes] = await Promise.allSettled([
+          apiFetch(`/api/trends?client_id=${CLIENT_ID}`),
+          apiFetch(`/api/positioning?client_id=${CLIENT_ID}`),
+          apiFetch(`/api/distribution?client_id=${CLIENT_ID}`),
+          apiFetch(`/api/charts/opportunity`),
+          apiFetch(`/api/charts/competitor-scores`),
+        ]);
+
+        if (trendsRes.status === "fulfilled") {
+          const { rows, keys } = mapTrends(trendsRes.value);
+          setTrendData(rows);
+          setTrendKeys(keys);
+        } else {
+          console.warn("Trends fetch failed:", trendsRes.reason);
+        }
+
+        if (posRes.status === "fulfilled") {
+          setPositioningData(mapPositioning(posRes.value));
+        } else {
+          console.warn("Positioning fetch failed:", posRes.reason);
+        }
+
+        if (distRes.status === "fulfilled") {
+          setDistributionData(mapDistribution(distRes.value));
+        } else {
+          console.warn("Distribution fetch failed:", distRes.reason);
+        }
+
+        if (oppRes.status === "fulfilled") {
+          setWhitespaceData(mapWhitespace(oppRes.value));
+        } else {
+          console.warn("Opportunity fetch failed:", oppRes.reason);
+        }
+
+        if (compRes.status === "fulfilled") {
+          setComparisonData(mapComparison(compRes.value));
+        } else {
+          console.warn("Competitor scores fetch failed:", compRes.reason);
+        }
+
+      } catch (err: any) {
+        // Only show the global error state for catastrophic failures
+        console.error("Dashboard critical error:", err);
+        setError(err.message || "Failed to connect to intelligence API.");
+      } finally {
+        // Always exit loading — never leave the user stuck
+        setLoading(false);
+      }
+    }
+    loadDashboard();
   }, []);
+
+  // ─────────────────────────────────────────
+  // Render states
+  // ─────────────────────────────────────────
+
+  if (loading) return <IntelligenceLoader />;
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-6">
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-8 max-w-md text-center">
+          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
+          <h2 className="text-white font-bold text-lg mb-2">Intelligence Feed Unavailable</h2>
+          <p className="text-zinc-500 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-sm transition-all"
+          >
+            <RefreshCw className="w-4 h-4" /> Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────
+  // Main render
+  // ─────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#e4e4e7] p-4 md:p-8 font-sans selection:bg-violet-500/30">
-      
+
+      {/* Header */}
       <div className="flex items-center justify-between mb-8 max-w-7xl mx-auto">
         <div>
-          <button 
+          <button
             onClick={() => {
               localStorage.removeItem("token");
               window.location.href = "/";
@@ -160,175 +416,223 @@ export default function Dashboard() {
             Live competitive insights and strategic recommendations with AI-driven analysis.
           </p>
         </div>
-        <div className="hidden md:block">
-          <div className="px-4 py-2 bg-zinc-900 border border-white/5 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 flex items-center gap-2">
-            <span className="w-2 h-2 bg-violet-400 rounded-full animate-pulse" />
-            Live Analysis Active
+        <div className="flex items-center gap-3">
+          <Link
+            href="/experiment-builder"
+            className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
+          >
+            Experiment Builder →
+          </Link>
+          <div className="hidden md:block">
+            <div className="px-4 py-2 bg-zinc-900 border border-white/5 rounded-full text-[10px] font-bold tracking-widest uppercase text-emerald-400 flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+              Live Analysis Active
+            </div>
           </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* 🔹 TOP SECTION: SUMMARY */}
+
+        {/* ── SUMMARY CARDS ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full" />
             <div className="bg-emerald-500/10 p-3 rounded-2xl text-emerald-400 w-fit mb-4 group-hover:scale-110 transition-transform"><TrendingUp className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Fastest Growing</h3>
-            <p className="text-xl font-bold text-white mb-2">AI Messaging</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Growing 3x faster than pricing strategies.</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={fastestGrowingCluster}>{fastestGrowingCluster}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Top emerging cluster from competitor signals.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 blur-3xl rounded-full" />
             <div className="bg-red-500/10 p-3 rounded-2xl text-red-400 w-fit mb-4 group-hover:scale-110 transition-transform"><AlertTriangle className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Highest Saturation</h3>
-            <p className="text-xl font-bold text-white mb-2">Pricing Tactics</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Market is overcrowded. Avoid direct price wars.</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={highestSaturation}>{highestSaturation}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Most crowded segment. Avoid direct competition.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 blur-3xl rounded-full" />
             <div className="bg-violet-500/10 p-3 rounded-2xl text-violet-400 w-fit mb-4 group-hover:scale-110 transition-transform"><Lightbulb className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Top Opportunity</h3>
-            <p className="text-xl font-bold text-white mb-2">AI + Convenience</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Combine tech with logistics for maximum impact.</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={topOpportunity}>{topOpportunity !== "—" ? topOpportunity : "Run pipeline first"}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Highest ROI whitespace gap identified.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all flex flex-col justify-center overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 blur-3xl rounded-full" />
-            <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-4">Market Risk Score</h3>
-            <div className="w-full bg-zinc-800/50 rounded-full h-4 overflow-hidden flex ring-1 ring-white/5">
-              <div className="bg-emerald-500/80 w-[20%]" />
-              <div className="bg-amber-500/80 w-[30%]" />
-              <div className="bg-red-500/80 w-[50%]" />
-            </div>
-            <div className="flex justify-between mt-3 text-[10px] text-zinc-500 uppercase font-black tracking-widest">
-              <span>Stable</span>
-              <span className="text-red-400 drop-shadow-[0_0_5px_rgba(248,113,113,0.3)]">Volatile (72/100)</span>
-            </div>
+            <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-4">Clusters Tracked</h3>
+            <p className="text-4xl font-black text-white">{trendKeys.length}</p>
+            <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes</p>
           </div>
         </div>
 
-        {/* 🔹 MIDDLE SECTION: ANALYSIS */}
+        {/* ── ANALYSIS CHARTS ── */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
+            Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Chart 1: Trend Over Time */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            {/* Chart 1: Trend Over Time (live from /api/trends) */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Trend Over Time</h3>
                 <p className="text-zinc-500 text-xs mt-1">Evolving messaging clusters</p>
-                <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                  Market shifting to AI intel
-                </div>
+                {trendKeys[0] && (
+                  <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
+                    Rising: {trendKeys[0]}
+                  </div>
+                )}
               </div>
               <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={trendData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-                    <Line type="monotone" dataKey="AI" stroke="#a78bfa" strokeWidth={4} dot={{r: 0, fill: '#a78bfa'}} activeDot={{ r: 6, strokeWidth: 0 }} />
-                    <Line type="monotone" dataKey="Pricing" stroke="#f87171" strokeWidth={4} dot={{r: 0}} activeDot={{ r: 6, strokeWidth: 0 }} />
-                    <Line type="monotone" dataKey="Quality" stroke="#60a5fa" strokeWidth={4} dot={{r: 0}} activeDot={{ r: 6, strokeWidth: 0 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                {trendData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                      <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                      {trendKeys.map((key, i) => (
+                        <Line
+                          key={key}
+                          type="monotone"
+                          dataKey={key}
+                          stroke={CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
+                          strokeWidth={3}
+                          dot={{ r: 0 }}
+                          activeDot={{ r: 5, strokeWidth: 0 }}
+                        />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No trend data — run pipeline first</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Chart 3: Messaging Distribution */}
+            {/* Chart 3: Messaging Distribution (live from /api/distribution) */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Theme Distribution</h3>
                 <p className="text-zinc-500 text-xs mt-1">Dominant market narratives</p>
-                <div className="mt-4 bg-red-500/10 text-red-300 text-[10px] px-3 py-1.5 rounded-lg border border-red-500/20 inline-block font-bold uppercase tracking-widest">
-                  Oversaturated: Pricing
-                </div>
+                {distributionData[0] && (
+                  <div className="mt-4 bg-red-500/10 text-red-300 text-[10px] px-3 py-1.5 rounded-lg border border-red-500/20 inline-block font-bold uppercase tracking-widest">
+                    Oversaturated: {distributionData[0].name}
+                  </div>
+                )}
               </div>
               <div className="h-64 w-full relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={distributionData} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
-                      {distributionData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-25px]">
-                  <span className="text-3xl font-black text-white">50%</span>
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">Pricing</span>
-                </div>
+                {distributionData.length > 0 ? (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={distributionData} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
+                          {distributionData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-25px]">
+                      <span className="text-3xl font-black text-white">{distributionData[0]?.value}%</span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{distributionData[0]?.name}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No distribution data</p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Chart 2: Competitor Positioning Map */}
+            {/* Chart 2: Competitor Positioning Map (live from /api/positioning) */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Positioning Map</h3>
-                <p className="text-zinc-500 text-xs mt-1">Market landscape visualization</p>
-                <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                  UC: Premium Leader
-                </div>
+                <p className="text-zinc-500 text-xs mt-1">Competitor strategy landscape</p>
+                {positioningData[0] && (
+                  <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
+                    Leader: {positioningData[0].name}
+                  </div>
+                )}
               </div>
               <div className="h-64 w-full relative">
                 <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Affordable ⟷ Premium</span>
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Feature ⟷ Outcome</span>
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartStroke} />
-                    <XAxis type="number" dataKey="x" name="Premium" domain={[0, 100]} hide />
-                    <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 100]} hide />
-                    <ZAxis range={[150, 600]} />
-                    <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: '3 3', stroke: 'rgba(255,255,255,0.2)' }} />
-                    {positioningData.map((entry, index) => (
-                      <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} className="drop-shadow-[0_0_8px_rgba(255,255,255,0.1)]" />
-                    ))}
-                  </ScatterChart>
-                </ResponsiveContainer>
+                {positioningData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={chartStroke} />
+                      <XAxis type="number" dataKey="x" name="Premium" domain={[0, 1]} hide />
+                      <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 1]} hide />
+                      <ZAxis range={[150, 600]} />
+                      <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }} />
+                      {positioningData.map((entry, index) => (
+                        <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No positioning data</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
+        {/* ── ACTION & STRATEGY ── */}
+        <div>
+          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+            Action &amp; Strategy <div className="h-[1px] flex-1 bg-white/5" />
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
-            {/* Chart 4: Opportunity / Whitespace */}
+
+            {/* Chart 4: Opportunity / Whitespace (live from /api/charts/opportunity) */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
               <div className="flex justify-between items-start mb-10">
                 <div>
                   <h3 className="font-bold text-xl text-white">Whitespace Opportunities</h3>
                   <p className="text-zinc-500 text-xs mt-1">Highest ROI focus areas</p>
                 </div>
-                <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
-                  Action: Deploy AI Messaging
-                </div>
+                {whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"]) && (
+                  <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
+                    Target: {whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name}
+                  </div>
+                )}
               </div>
               <div className="h-72 w-full relative">
                 <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Comp ⟷ High Comp</span>
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Growth ⟷ High Growth</span>
-                <ResponsiveContainer width="100%" height="100%">
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid stroke={chartStroke} />
-                    <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.03} />
-                    <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.03} />
-                    
-                    <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
-                    <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
-                    <ZAxis range={[300, 800]} />
-                    <Tooltip content={<ScatterTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-                    {whitespaceData.map((entry, index) => (
-                      <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
-                    ))}
-                  </ScatterChart>
-                </ResponsiveContainer>
-                {/* Quadrant Labels */}
+                {whitespaceData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                      <CartesianGrid stroke={chartStroke} />
+                      <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.03} />
+                      <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.03} />
+                      <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
+                      <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
+                      <ZAxis range={[300, 800]} />
+                      <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
+                      {whitespaceData.map((entry, index) => (
+                        <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No whitespace data — run pipeline first</p>
+                  </div>
+                )}
                 <div className="absolute top-[15%] left-[15%] pointer-events-none opacity-40">
                   <span className="text-[9px] font-black tracking-widest uppercase text-emerald-400">Golden Opportunity</span>
                 </div>
@@ -338,30 +642,37 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Chart 5: Competitor Comparison */}
+            {/* Chart 5: Competitor Comparison (live from /api/charts/competitor-scores) */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="flex justify-between items-start mb-10">
                 <div>
                   <h3 className="font-bold text-xl text-white">Competitor Strength</h3>
-                  <p className="text-zinc-500 text-xs mt-1">Cross-brand metric indexing</p>
+                  <p className="text-zinc-500 text-xs mt-1">Cross-brand pillar indexing</p>
                 </div>
                 <div className="bg-blue-500/10 text-blue-300 text-[10px] px-3 py-1.5 rounded-lg border border-blue-500/20 font-bold uppercase tracking-widest">
-                  Avoid Pricing Wars
+                  Scoring: 4 Pillars
                 </div>
               </div>
               <div className="h-72 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={comparisonData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <Tooltip content={<CustomTooltip />} cursor={{fill: 'rgba(255,255,255,0.03)'}} />
-                    <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '15px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-                    <Bar dataKey="Pricing" fill="#f87171" radius={[6, 6, 0, 0]} barSize={20} />
-                    <Bar dataKey="Quality" fill="#60a5fa" radius={[6, 6, 0, 0]} barSize={20} />
-                    <Bar dataKey="AI" fill="#a78bfa" radius={[6, 6, 0, 0]} barSize={20} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {comparisonData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={comparisonData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                      <Legend wrapperStyle={{ fontSize: "10px", paddingTop: "15px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                      <Bar dataKey="pricing" name="Pricing" fill={COMPETITOR_COLORS.pricing} radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="quality" name="Quality" fill={COMPETITOR_COLORS.quality} radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="ai" name="AI / Tech" fill={COMPETITOR_COLORS.ai} radius={[6, 6, 0, 0]} barSize={16} />
+                      <Bar dataKey="convenience" name="Convenience" fill={COMPETITOR_COLORS.convenience} radius={[6, 6, 0, 0]} barSize={16} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No competitor data</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

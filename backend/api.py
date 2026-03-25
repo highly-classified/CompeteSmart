@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from src.database import get_db, engine
@@ -27,14 +28,23 @@ except Exception as e:
 
 app = FastAPI(title="CompeteSmart Intelligence API")
 
+<<<<<<< HEAD
+# Allow the Next.js frontend to call this API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+=======
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # In production, restrict this to your frontend URL
+>>>>>>> 7738673d8f5da0f9d07335afaa70ddcdc60e19c8
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+<<<<<<< HEAD
+=======
 # --- Copilot & Experiment Schemas ---
 class CopilotChatRequest(BaseModel):
     experiment_text: str
@@ -45,6 +55,7 @@ class CopilotChatRequest(BaseModel):
 class CopilotChatResponse(BaseModel):
     response: str
 
+>>>>>>> 7738673d8f5da0f9d07335afaa70ddcdc60e19c8
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
@@ -260,14 +271,14 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 # ==========================================
 
 @app.get("/api/charts/opportunity")
-def get_chart_opportunity(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+def get_chart_opportunity(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 4: Opportunity / Whitespace (Quadrant Chart)
     X-axis -> competition (frequency)
     Y-axis -> growth rate
     """
     temp_engine = TemporalEngine(db)
-    trends = temp_engine.calculate_trends()
+    trends = temp_engine.calculate_trends(client_id=client_id)
     
     chart_data = []
     for t in trends:
@@ -295,56 +306,47 @@ def get_chart_opportunity(db: Session = Depends(get_db), user_id: str = Depends(
     return chart_data
 
 @app.get("/api/charts/competitor-scores")
-def get_chart_competitor_scores(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+def get_chart_competitor_scores(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 5: Competitor Comparison (Grouped Bar Chart)
     X-axis -> competitors
     Y-axis -> score (frequency / strength)
     """
-    competitors = db.query(models.Competitor).all()
-    chart_data = []
-    
-    # Define keywords for the pillars
-    pillars = {
-        "pricing": ["pricing", "price", "cost", "affordable", "budget", "cheap", "expensive"],
-        "quality": ["quality", "premium", "best", "expert", "professional", "excellent", "certified"],
-        "ai": ["ai", "automation", "smart", "intelligent", "algorithm", "machine", "tech"],
-        "convenience": ["convenience", "fast", "quick", "easy", "doorstep", "simple", "hassle"]
+    # Optimized SQL approach: Use the Cluster labels directly to count signals per pillar
+    # We define regex patterns for each pillar
+    patterns = {
+        "pricing": "pricing|price|cost|affordable|budget|cheap|expensive",
+        "quality": "quality|premium|best|expert|professional|excellent|certified",
+        "ai": "ai|automation|smart|intelligent|algorithm|machine|tech",
+        "convenience": "convenience|fast|quick|easy|doorstep|simple|hassle"
     }
-    
+
+    competitors = db.query(models.Competitor).filter(models.Competitor.client_id == client_id).all()
+    chart_data = []
+
     for comp in competitors:
-        comp_scores = {
-            "competitor": comp.name,
-            "pricing": 0,
-            "quality": 0,
-            "ai": 0,
-            "convenience": 0
-        }
-        
-        # Get all signals for this competitor
-        signals = db.query(models.Signal).filter(models.Signal.competitor_id == comp.id).all()
-        
-        for sig in signals:
-            content_lower = str(sig.content).lower()
-            category_lower = str(sig.category).lower() if sig.category else ""
-            
-            # Score each pillar if keywords match
-            for pillar, keywords in pillars.items():
-                if any(kw in content_lower or kw in category_lower for kw in keywords):
-                    comp_scores[pillar] += 1
-                    
+        comp_scores = {"competitor": comp.name}
+        for pillar, p_regex in patterns.items():
+            count = (
+                db.query(func.count(models.Signal.id))
+                .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
+                .filter(models.Signal.competitor_id == comp.id)
+                .filter(models.Cluster.label.op("~*")(p_regex))
+                .scalar() or 0
+            )
+            comp_scores[pillar] = count
         chart_data.append(comp_scores)
         
     return chart_data
 
 @app.get("/api/charts/risk-saturation")
-def get_chart_risk_saturation(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+def get_chart_risk_saturation(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
     Chart 6: Risk / Saturation (Gauge / Simple Bar)
     Shows saturation score and competition density to explicitly flag "What NOT to do".
     """
     temp_engine = TemporalEngine(db)
-    saturations = temp_engine.calculate_saturation()
+    saturations = temp_engine.calculate_saturation(client_id=client_id)
     
     chart_data = []
     for s in saturations:
