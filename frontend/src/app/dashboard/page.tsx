@@ -350,6 +350,79 @@ export default function Dashboard() {
 
           </div>
         </div>
+
+        {/* 🔹 NEXT THINGS TO DO */}
+        <div>
+          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+             Next Things To Do <div className="h-[1px] flex-1 bg-white/5" />
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
+
+            {/* Experiment 1 */}
+            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full" />
+              <div className="flex items-center gap-2 mb-4">
+                <span className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">Low Risk</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.22</span>
+              </div>
+              <h3 className="font-bold text-lg text-white mb-2">Deploy AI-Powered Messaging</h3>
+              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
+                Leverage AI-driven communication to differentiate from pricing-focused competitors. Intelligence Layer shows 3x growth momentum with low saturation.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+              </div>
+              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
+                Launch Experiment <span className="text-lg">→</span>
+              </Link>
+            </div>
+
+            {/* Experiment 2 */}
+            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
+              <div className="flex items-center gap-2 mb-4">
+                <span className="bg-amber-500/10 text-amber-300 text-[10px] px-3 py-1 rounded-lg border border-amber-500/20 font-bold uppercase tracking-widest">Medium Risk</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.51</span>
+              </div>
+              <h3 className="font-bold text-lg text-white mb-2">Premium Verified Professionals Tier</h3>
+              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
+                Launch a verified-only premium service tier. Decision Layer recommends targeting high-value urban segments. Trust Layer flags moderate positioning mismatch.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+              </div>
+              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
+                Launch Experiment <span className="text-lg">→</span>
+              </Link>
+            </div>
+
+            {/* Experiment 3 */}
+            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full" />
+              <div className="flex items-center gap-2 mb-4">
+                <span className="bg-red-500/10 text-red-300 text-[10px] px-3 py-1 rounded-lg border border-red-500/20 font-bold uppercase tracking-widest">High Risk</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.78</span>
+              </div>
+              <h3 className="font-bold text-lg text-white mb-2">Aggressive Discount Campaign</h3>
+              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
+                Undercut competitor pricing to capture market share. Trust Layer warns of high saturation and low trend momentum. Decision Layer advises against for premium clients.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-6">
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+              </div>
+              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-red-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
+                Launch Experiment <span className="text-lg">→</span>
+              </Link>
+            </div>
+
+          </div>
+        </div>
       </div>
     </div>
   );
