@@ -174,6 +174,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     id             SERIAL PRIMARY KEY,
     competitor_id  INT  NOT NULL REFERENCES competitors(id),
     url            TEXT NOT NULL,
+    is_synthetic   BOOLEAN DEFAULT FALSE,
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -183,6 +184,7 @@ CREATE TABLE IF NOT EXISTS extracted_content (
     content_type TEXT NOT NULL,
     content      TEXT NOT NULL,
     content_hash TEXT NOT NULL UNIQUE,
+    is_synthetic BOOLEAN DEFAULT FALSE,
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -199,7 +201,14 @@ def init_db() -> None:
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
+                # 1. Create tables if not exists
                 cur.execute(_CREATE_TABLES_SQL)
+
+                # 2. Light migration: ensure 'is_synthetic' column exists
+                # (Handles cases where tables were created before this feature)
+                cur.execute("ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN DEFAULT FALSE")
+                cur.execute("ALTER TABLE extracted_content ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN DEFAULT FALSE")
+
         logger.info("[DB:init] ✓ Schema initialised.")
     except Exception as exc:
         logger.error("[DB:init] ✗ Schema init failed: %s", exc)
@@ -241,24 +250,32 @@ def upsert_competitor(name: str, domain: str) -> int:
 # snapshots table
 # ---------------------------------------------------------------------------
 
-def create_snapshot(competitor_id: int, url: str) -> int:
+def create_snapshot(
+    competitor_id: int,
+    url: str,
+    is_synthetic: bool = False,
+    created_at: Optional[datetime] = None,
+) -> int:
     """Insert a new snapshot row and return its id."""
     sql = """
-        INSERT INTO snapshots (competitor_id, url)
-        VALUES (%s, %s)
+        INSERT INTO snapshots (competitor_id, url, is_synthetic, created_at)
+        VALUES (%s, %s, %s, %s)
         RETURNING id
     """
+    # Use provided created_at or default to NOW()
+    ts = created_at or datetime.utcnow()
+
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 before = _get_row_count(cur, "snapshots")
-                cur.execute(sql, (competitor_id, url))
+                cur.execute(sql, (competitor_id, url, is_synthetic, ts))
                 snapshot_id = cur.fetchone()[0]
                 after = _get_row_count(cur, "snapshots")
                 logger.info(
                     "[DB:snapshot] ✓ Created snapshot id=%d for url=%s "
-                    "(snapshots: %d → %d)",
-                    snapshot_id, url, before, after,
+                    "(snapshots: %d → %d, synthetic=%s)",
+                    snapshot_id, url, before, after, is_synthetic,
                 )
                 return snapshot_id
     except Exception as exc:
@@ -279,6 +296,8 @@ def insert_content_chunk(
     content_type: str,
     content: str,
     content_hash: str,
+    is_synthetic: bool = False,
+    created_at: Optional[datetime] = None,
 ) -> bool:
     """
     Insert a semantic chunk.
@@ -289,20 +308,24 @@ def insert_content_chunk(
     False – duplicate hash (skipped)
     """
     sql = """
-        INSERT INTO extracted_content (snapshot_id, content_type, content, content_hash)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO extracted_content (
+            snapshot_id, content_type, content, content_hash, is_synthetic, created_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s)
         ON CONFLICT (content_hash) DO NOTHING
     """
+    ts = created_at or datetime.utcnow()
+
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (snapshot_id, content_type, content, content_hash))
+                cur.execute(
+                    sql,
+                    (snapshot_id, content_type, content, content_hash, is_synthetic, ts),
+                )
                 inserted = cur.rowcount == 1
                 if inserted:
-                    logger.debug(
-                        "[DB:chunk] ✓ Inserted [%s] hash=%s…  text=%r",
-                        content_type, content_hash[:12], content[:60],
-                    )
+                    logger.debug("[DB:content] Inserted chunk for snapshot_id=%d", snapshot_id)
                 else:
                     logger.debug(
                         "[DB:chunk] ~ Duplicate skipped hash=%s…", content_hash[:12]
@@ -314,7 +337,8 @@ def insert_content_chunk(
             snapshot_id, content_hash[:12], exc,
         )
         logger.error(traceback.format_exc())
-        return False          # don't crash pipeline on single chunk failure
+        return False
+
 
 
 # ---------------------------------------------------------------------------
