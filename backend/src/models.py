@@ -15,6 +15,7 @@ class Competitor(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     domain = Column(Text)
+    client_id = Column(Integer, nullable=True) # Mapping: competitors belong to a specific client
 
 class ScrapeState(Base):
     __tablename__ = "scrape_state"
