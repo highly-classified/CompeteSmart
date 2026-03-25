@@ -111,7 +111,12 @@ class ClusteringEngine:
             self.db.add(vec)
             count += 1
             
-        self.db.commit()
+        from sqlalchemy.exc import IntegrityError
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            print(f"Notice: Avoided inserting duplicate embeddings from parallel API call.")
         return count
 
     def run_clustering(self):
