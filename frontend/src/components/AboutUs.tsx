@@ -7,27 +7,27 @@ import { Target, Zap, Shield } from "lucide-react";
 export default function AboutUs() {
   const pillars = [
     {
-      icon: <Target className="w-8 h-8 mb-4 text-[hsl(220,70%,78%)]" />,
-      title: "Precision Tracking",
+      icon: <Zap className="w-8 h-8 mb-4 text-[hsl(220,70%,78%)]" />,
+      title: "Intelligence Layer",
       description:
-        "Monitor your competitors in real time, gathering critical data across multiple channels to ensure you never miss a market shift.",
+        "Continuously ingest and process vast amounts of market data. We instantly transform raw competitor signals into structured, readable intelligence.",
     },
     {
-      icon: <Zap className="w-8 h-8 mb-4 text-[hsl(40,80%,82%)]" />,
-      title: "AI-Driven Insights",
+      icon: <Target className="w-8 h-8 mb-4 text-[hsl(40,80%,82%)]" />,
+      title: "Decision Layer",
       description:
-        "Transform raw data into actionable intelligence. Our advanced models analyze sentiment, predict trends, and highlight emerging threats.",
+        "Bridge the gap between data and action. Our decision engine recommends strategic prioritizations and experimental pathways for maximum impact.",
     },
     {
       icon: <Shield className="w-8 h-8 mb-4 text-foreground/80" />,
-      title: "Strategic Dominance",
+      title: "Trust Layer",
       description:
-        "Prioritize initiatives and execute with confidence. We provide the robust situational awareness needed to outmaneuver the competition.",
+        "Operate with absolute certainty. We provide comprehensive risk assessments and full traceability to ensure every strategic move is securely vetted.",
     },
   ];
 
   return (
-    <section className="relative w-full bg-background text-foreground py-24 md:py-32 px-6 md:px-10 overflow-hidden">
+    <section id="about-us" className="relative w-full bg-background text-foreground py-24 md:py-32 px-6 md:px-10 overflow-hidden">
       {/* Background Accent */}
       <div className="absolute top-0 right-0 w-[50vw] h-[50vw] bg-[hsl(220,70%,78%)] opacity-5 blur-[120px] rounded-full pointer-events-none" />
 
@@ -44,10 +44,11 @@ export default function AboutUs() {
             <span className="font-display">market intelligence</span>
           </h2>
           <p className="text-foreground/70 text-lg md:text-xl leading-relaxed">
-            CompeteSmart is engineered for those who refuse to rely on guesswork.
-            We unify disparate data layers into a single, comprehensive dashboard
-            that empowers decision-makers with absolute clarity and unmatched
-            competitive foresight.
+            CompeteSmart is a next-generation integrated Market Intelligence System. 
+            By seamlessly combining distinct Intelligence, Decision, and Trust layers 
+            into a single continuous pipeline, we empower organizations to confidently 
+            navigate risks, execute data-backed experiments, and maintain an uncompromising 
+            competitive edge.
           </p>
         </motion.div>
 
