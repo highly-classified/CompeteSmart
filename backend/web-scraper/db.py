@@ -24,6 +24,7 @@ import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
 from config import DATABASE_URL
+from utils import normalize_url
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +322,8 @@ def insert_content_chunk(
 # ---------------------------------------------------------------------------
 
 def get_last_scraped_at(url: str) -> Optional[datetime]:
-    """Return the last_scraped_at timestamp for *url*, or None if never scraped."""
+    """Return the last_scraped_at timestamp for the normalised *url*, or None."""
+    url = normalize_url(url)
     sql = "SELECT last_scraped_at FROM scrape_state WHERE url = %s"
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -330,19 +332,22 @@ def get_last_scraped_at(url: str) -> Optional[datetime]:
             return row[0] if row else None
 
 
-def update_scrape_state(url: str, scraped_at: datetime) -> None:
-    """Upsert the last_scraped_at for *url*."""
+def update_scrape_state(url: str) -> None:
+    """
+    Upsert the last_scraped_at for the normalised *url* using DB server time.
+    """
+    url = normalize_url(url)
     sql = """
         INSERT INTO scrape_state (url, last_scraped_at)
-        VALUES (%s, %s)
+        VALUES (%s, NOW())
         ON CONFLICT (url)
-        DO UPDATE SET last_scraped_at = EXCLUDED.last_scraped_at
+        DO UPDATE SET last_scraped_at = NOW()
     """
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
-                cur.execute(sql, (url, scraped_at))
-        logger.info("[DB:state] scrape_state updated for url=%s  at=%s", url, scraped_at)
+                cur.execute(sql, (url,))
+        logger.info("[DB:state] scrape_state updated (UPSERT) for url=%s", url)
     except Exception as exc:
         logger.error("[DB:state] update_scrape_state FAILED for url=%s: %s", url, exc)
         logger.error(traceback.format_exc())
@@ -357,50 +362,87 @@ def get_all_due_urls(
     """
     Return the subset of *all_urls* that are due for scraping right now.
 
+    Every URL is normalised before comparison so trailing-slash variants
+    are treated identically.
+
     Parameters
     ----------
     force : bool
-        If True, return ALL urls regardless of last_scraped_at (test mode).
+        If True, return ALL urls regardless of last_scraped_at.
+        Driven by config.FORCE_SCRAPE or the --test CLI flag.
+
+    Fail-safe
+    ---------
+    If the scrape_state lookup itself fails, default to scraping everything
+    so a temporary DB connectivity hiccup never silently halts ingestion.
     """
     if not all_urls:
         return []
 
+    # Normalise every incoming URL before any DB interaction
+    normalised_urls = [normalize_url(u) for u in all_urls]
+
     if force:
         logger.warning(
-            "[DB:state] FORCE mode active — returning all %d URLs regardless of 24h rule.",
-            len(all_urls),
+            "[DB:state] FORCE_SCRAPE active — bypassing 24h gate for all %d URLs.",
+            len(normalised_urls),
         )
-        return list(all_urls)
+        for url in normalised_urls:
+            print(f"[SCRAPE CHECK] URL: {url}")
+            print("[SCRAPE CHECK] Last scraped: N/A (force mode)")
+            print("[SCRAPE CHECK] Decision: SCRAPE")
+        return normalised_urls
 
     sql = """
         SELECT url, last_scraped_at
         FROM scrape_state
         WHERE url = ANY(%s)
     """
-    with get_conn() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute(sql, (all_urls,))
-            rows = {r["url"]: r["last_scraped_at"] for r in cur.fetchall()}
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+                cur.execute(sql, (normalised_urls,))
+                rows = {r["url"]: r["last_scraped_at"] for r in cur.fetchall()}
+    except Exception as exc:
+        # Fail-safe: if DB lookup fails, scrape everything rather than silently skip
+        logger.error(
+            "[DB:state] scrape_state lookup failed — defaulting to SCRAPE for all URLs: %s", exc
+        )
+        logger.error(traceback.format_exc())
+        return normalised_urls
 
     now = datetime.utcnow()
     due: list[str] = []
-    for url in all_urls:
-        last = rows.get(url)
+
+    for url in normalised_urls:
+        last = rows.get(url)  # None if never scraped or null in DB
+
+        print(f"[SCRAPE CHECK] URL: {url}")
+        print(f"[SCRAPE CHECK] Last scraped: {last if last is not None else 'NULL'}")
+
         if last is None:
-            logger.info(
-                "[DB:state] %-60s  → SCRAPE  (never scraped)", url
-            )
+            print("[SCRAPE CHECK] Decision: SCRAPE")
+            logger.info("[DB:state] %-70s → SCRAPE  (never scraped)", url)
             due.append(url)
         else:
-            delta_hours = (now - last).total_seconds() / 3600
+            # Ensure comparison is timezone-naive UTC on both sides
+            if hasattr(last, "tzinfo") and last.tzinfo is not None:
+                last = last.replace(tzinfo=None)  # strip tz if Neon returns tz-aware
+            delta = now - last
+            delta_hours = delta.total_seconds() / 3600
+
             if delta_hours >= interval_hours:
+                print("[SCRAPE CHECK] Decision: SCRAPE")
                 logger.info(
-                    "[DB:state] %-60s  → SCRAPE  (last=%.1fh ago)", url, delta_hours
+                    "[DB:state] %-70s → SCRAPE  (last=%.1fh ago)", url, delta_hours
                 )
                 due.append(url)
             else:
+                hours_remaining = interval_hours - delta_hours
+                print("[SCRAPE CHECK] Decision: SKIP")
                 logger.info(
-                    "[DB:state] %-60s  → SKIP    (last=%.1fh ago, need %.0fh)",
-                    url, delta_hours, interval_hours,
+                    "[DB:state] %-70s → SKIP    (last=%.1fh ago, next in %.1fh)",
+                    url, delta_hours, hours_remaining,
                 )
+
     return due

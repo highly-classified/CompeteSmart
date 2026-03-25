@@ -30,6 +30,13 @@ POST_LOAD_DELAY_MS: int = 2_500         # Extra wait after networkidle (JS-heavy
 SCHEDULER_POLL_INTERVAL_SECONDS: int = 300  # How often scheduler checks for due URLs
 
 # ---------------------------------------------------------------------------
+# Scrape gate override — set True for local testing only
+# ---------------------------------------------------------------------------
+# When True:  24-hour check is bypassed; every URL is scraped unconditionally.
+# When False: normal 24-hour gate applies (production default).
+FORCE_SCRAPE: bool = False
+
+# ---------------------------------------------------------------------------
 # Chunking constraints
 # ---------------------------------------------------------------------------
 CHUNK_MIN_WORDS: int = 5
@@ -57,10 +64,10 @@ COMPETITORS: list[dict] = [
         "name": "Urban Company",
         "domain": "www.urbancompany.com",
         "urls": [
-            "https://www.urbancompany.com/",
             "https://www.urbancompany.com/chennai",
-            "https://www.urbancompany.com/services",
-            "https://www.urbancompany.com/chennai/home-cleaning",
+            "https://www.urbancompany.com/near-me/bathroom-cleaning-services-near-me",
+            "https://www.urbancompany.com/near-me/professional-cleaning-services-near-me",
+            "https://www.urbancompany.com/near-me/cleaning-services-near-me",
         ],
     },
     # Add real competitors here. Remove this comment block when you do.

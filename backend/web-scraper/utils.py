@@ -1,10 +1,11 @@
 """
 utils.py
 --------
-Shared utilities for text processing.
+Shared utilities: URL normalisation, text processing, chunking, hashing.
 
 Responsibilities
 ----------------
+* normalize_url()   – canonical form of a URL (no trailing slash, lowercase scheme+host)
 * clean_text()      – strip noise from raw extracted strings
 * chunk_text()      – split cleaned text into 5–30 word semantic chunks
 * compute_hash()    – SHA-256 fingerprint for deduplication
@@ -15,6 +16,51 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
+from urllib.parse import urlparse, urlunparse
+
+
+# ---------------------------------------------------------------------------
+# URL normalisation
+# ---------------------------------------------------------------------------
+
+def normalize_url(url: str) -> str:
+    """
+    Return the canonical form of *url* so that the same page is never stored
+    under two different strings.
+
+    Rules applied (in order)
+    ------------------------
+    1. Strip leading/trailing whitespace.
+    2. Lowercase the scheme and host (path is case-sensitive for many servers).
+    3. Remove a trailing slash from the path ONLY when the path is exactly "/"
+       or ends with "/" and has no query string — avoids mangling paths like
+       "/chennai/home-cleaning/".
+    4. Remove the fragment (#…) — fragments are client-side only.
+
+    Examples
+    --------
+    >>> normalize_url("https://www.urbancompany.com/")
+    'https://www.urbancompany.com'
+    >>> normalize_url("HTTPS://WWW.urbancompany.com/chennai")
+    'https://www.urbancompany.com/chennai'
+    >>> normalize_url("https://www.urbancompany.com/services/")
+    'https://www.urbancompany.com/services'
+    """
+    url = url.strip()
+    parsed = urlparse(url)
+
+    # Lowercase scheme + host
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+
+    # Strip trailing slash from path (unless path is empty)
+    path = parsed.path
+    if path.endswith("/") and len(path) > 1:
+        path = path.rstrip("/")
+
+    # Drop fragment; keep query string as-is
+    normalised = urlunparse((scheme, netloc, path, parsed.params, parsed.query, ""))
+    return normalised
 
 
 # ---------------------------------------------------------------------------
