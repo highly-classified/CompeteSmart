@@ -43,8 +43,8 @@ class ExtractedContent(Base):
 class Signal(Base):
     __tablename__ = "signals"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    competitor_id = Column(UUID(as_uuid=True), ForeignKey("competitors.id", ondelete="CASCADE"))
-    snapshot_id = Column(UUID(as_uuid=True), ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True)
+    competitor_id = Column(Integer, ForeignKey("competitors.id", ondelete="CASCADE"))
+    snapshot_id = Column(Integer, ForeignKey("snapshots.id", ondelete="CASCADE"), nullable=True)
     content = Column(Text, nullable=False)
     category = Column(Text) 
     cluster_id = Column(Text, nullable=True) 
