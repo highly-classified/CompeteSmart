@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   LineChart,
   Line,
@@ -23,7 +23,6 @@ import {
 import { Target, TrendingUp, AlertTriangle, Lightbulb, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
 
@@ -37,51 +36,20 @@ type DistributionPoint = { name: string; value: number; fill: string };
 type WhitespacePoint = { name: string; x: number; y: number; fill: string };
 type ComparisonPoint = { name: string; pricing: number; quality: number; ai: number; convenience: number };
 
+interface Experiment {
+  insight: string;
+  cluster_id: string;
+  trend: string;
+  confidence: number;
+  risk: number;
+  recommended_action: string;
+  evidence: string[];
+}
+
 // ─────────────────────────────────────────────
 // Config
 // ─────────────────────────────────────────────
 
-const API_BASE = "http://127.0.0.1:8000";
-const CLIENT_ID = 1;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-// ─── Cache Helpers ───────────────────────────────────────────────────────────
-
-function getCached<T>(key: string): T | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const { ts, data } = JSON.parse(raw) as { ts: number; data: T };
-    if (Date.now() - ts > CACHE_TTL_MS) {
-      localStorage.removeItem(key);
-      return null;
-    }
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-function setCache(key: string, data: unknown): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
-  } catch { }
-}
-
-function clearDashboardCache(): void {
-  if (typeof window === "undefined") return;
-  [
-    `/api/trends?client_id=${CLIENT_ID}`,
-    `/api/positioning?client_id=${CLIENT_ID}`,
-    `/api/distribution?client_id=${CLIENT_ID}`,
-    `/api/charts/opportunity?client_id=${CLIENT_ID}`,
-    `/api/charts/competitor-scores?client_id=${CLIENT_ID}`,
-  ].forEach((k) => localStorage.removeItem(`cs_cache:${k}`));
-}
-
-// Color palette for dynamic keys
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
 const PIE_COLORS = ["#f87171", "#60a5fa", "#34d399", "#a78bfa", "#f472b6"];
 const COMPETITOR_COLORS = {
@@ -98,16 +66,87 @@ const QUADRANT_FILLS: Record<string, string> = {
   Avoid: "#f87171",
 };
 
-interface Experiment {
-  insight: string;
-  cluster_id: string;
-  trend: string;
-  confidence: number;
-  risk: number;
-  recommended_action: string;
-  evidence: string[];
-}
+// ─────────────────────────────────────────────
+// Mock Data
+// ─────────────────────────────────────────────
 
+const MOCK_TREND_DATA: TrendPoint[] = [
+  { time: "Jan", "AI & Automation": 12, "Premium Quality": 28, "Price & Value": 45, "Convenience": 18, "Trust & Safety": 9 },
+  { time: "Feb", "AI & Automation": 18, "Premium Quality": 31, "Price & Value": 42, "Convenience": 22, "Trust & Safety": 11 },
+  { time: "Mar", "AI & Automation": 27, "Premium Quality": 29, "Price & Value": 38, "Convenience": 25, "Trust & Safety": 14 },
+  { time: "Apr", "AI & Automation": 35, "Premium Quality": 33, "Price & Value": 35, "Convenience": 28, "Trust & Safety": 16 },
+  { time: "May", "AI & Automation": 48, "Premium Quality": 30, "Price & Value": 31, "Convenience": 33, "Trust & Safety": 20 },
+  { time: "Jun", "AI & Automation": 62, "Premium Quality": 27, "Price & Value": 28, "Convenience": 40, "Trust & Safety": 24 },
+  { time: "Jul", "AI & Automation": 74, "Premium Quality": 32, "Price & Value": 25, "Convenience": 45, "Trust & Safety": 29 },
+];
+const MOCK_TREND_KEYS = ["AI & Automation", "Premium Quality", "Price & Value", "Convenience", "Trust & Safety"];
+
+const MOCK_POSITIONING_DATA: PositioningPoint[] = [
+  { name: "UrbanCompany", x: 0.78, y: 0.82, dominant_cluster: "AI & Automation", fill: "#a78bfa" },
+  { name: "Housejoy", x: 0.35, y: 0.55, dominant_cluster: "Price & Value", fill: "#f87171" },
+  { name: "Helpr", x: 0.52, y: 0.40, dominant_cluster: "Convenience", fill: "#60a5fa" },
+  { name: "Zimmber", x: 0.22, y: 0.30, dominant_cluster: "Price & Value", fill: "#fbbf24" },
+  { name: "TaskBob", x: 0.63, y: 0.68, dominant_cluster: "Premium Quality", fill: "#34d399" },
+];
+
+const MOCK_DISTRIBUTION_DATA: DistributionPoint[] = [
+  { name: "Price & Value", value: 38, fill: "#f87171" },
+  { name: "Convenience", value: 24, fill: "#60a5fa" },
+  { name: "Premium Quality", value: 18, fill: "#34d399" },
+  { name: "AI & Automation", value: 12, fill: "#a78bfa" },
+  { name: "Trust & Safety", value: 8, fill: "#f472b6" },
+];
+
+const MOCK_WHITESPACE_DATA: WhitespacePoint[] = [
+  { name: "AI Scheduling", x: 18, y: 88, fill: QUADRANT_FILLS["BEST opportunity"] },
+  { name: "Eco-Friendly", x: 22, y: 74, fill: QUADRANT_FILLS["BEST opportunity"] },
+  { name: "Senior Care", x: 30, y: 62, fill: QUADRANT_FILLS["BEST opportunity"] },
+  { name: "Premium Deep Clean", x: 55, y: 72, fill: QUADRANT_FILLS["Crowded"] },
+  { name: "Budget Cleaning", x: 82, y: 38, fill: QUADRANT_FILLS["Avoid"] },
+  { name: "Same-Day Service", x: 65, y: 55, fill: QUADRANT_FILLS["Crowded"] },
+  { name: "Subscription Plans", x: 40, y: 45, fill: QUADRANT_FILLS["Weak"] },
+  { name: "B2B Office", x: 28, y: 80, fill: QUADRANT_FILLS["BEST opportunity"] },
+];
+
+const MOCK_COMPARISON_DATA: ComparisonPoint[] = [
+  { name: "UrbanCompany", pricing: 62, quality: 88, ai: 91, convenience: 78 },
+  { name: "Housejoy", pricing: 80, quality: 55, ai: 38, convenience: 65 },
+  { name: "Helpr", pricing: 58, quality: 72, ai: 44, convenience: 83 },
+  { name: "Zimmber", pricing: 90, quality: 40, ai: 22, convenience: 58 },
+  { name: "TaskBob", pricing: 50, quality: 80, ai: 55, convenience: 70 },
+];
+
+const MOCK_EXPERIMENTS: Experiment[] = [
+  {
+    insight: "Cluster 'AI & Automation' is showing a rising trend with 74% momentum.",
+    cluster_id: "ai-automation",
+    trend: "rising",
+    confidence: 0.88,
+    risk: 0.18,
+    recommended_action: "Deploy AI-powered scheduling and smart-match messaging to differentiate from pricing-focused competitors. Leverage 3x growth momentum with low saturation.",
+    evidence: ["sig-1", "sig-2", "sig-3", "sig-4", "sig-5"],
+  },
+  {
+    insight: "Cluster 'Senior Care' is showing a rising trend with 62% momentum.",
+    cluster_id: "senior-care",
+    trend: "rising",
+    confidence: 0.75,
+    risk: 0.34,
+    recommended_action: "Launch a verified-only premium service tier targeting elderly households. Trust Layer recommends credentialed professionals and background checks.",
+    evidence: ["sig-6", "sig-7", "sig-8"],
+  },
+  {
+    insight: "Cluster 'Price & Value' is showing a declining trend with 38% saturation.",
+    cluster_id: "price-value",
+    trend: "declining",
+    confidence: 0.55,
+    risk: 0.76,
+    recommended_action: "Avoid aggressive discount campaigns. High saturation and declining momentum make this a low-ROI play. Decision Layer advises against for premium positioning.",
+    evidence: ["sig-9", "sig-10"],
+  },
+];
+
+// ─────────────────────────────────────────────
 // Custom Tooltips
 // ─────────────────────────────────────────────
 
@@ -169,290 +208,20 @@ const ScatterTooltip = ({ active, payload }: any) => {
 };
 
 // ─────────────────────────────────────────────
-// Loading Screen
-// ─────────────────────────────────────────────
-
-function IntelligenceLoader() {
-  const [progress, setProgress] = useState(0);
-  const [statusText, setStatusText] = useState("Fetching competitor signals...");
-  const STATUS_STEPS = [
-    "Fetching competitor signals...",
-    "Processing cluster embeddings...",
-    "Calculating saturation scores...",
-    "Analyzing whitespace opportunities...",
-    "Compiling live intelligence...",
-  ];
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setProgress((prev) => Math.min(prev + 3, 90));
-    }, 150);
-
-    let step = 0;
-    const textInterval = setInterval(() => {
-      step = (step + 1) % STATUS_STEPS.length;
-      setStatusText(STATUS_STEPS[step]);
-    }, 1800);
-
-    return () => {
-      clearInterval(interval);
-      clearInterval(textInterval);
-    };
-  }, []);
-
-  return (
-    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-8">
-      <div className="relative w-32 h-32">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-          <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="3" />
-          <circle
-            cx="60" cy="60" r="54"
-            fill="none" stroke="#a78bfa" strokeWidth="3" strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 54}
-            strokeDashoffset={2 * Math.PI * 54 * (1 - progress / 100)}
-            className="transition-all duration-300 ease-out"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-white text-xl font-bold font-mono">{progress}%</span>
-        </div>
-      </div>
-
-      <div className="text-center space-y-2">
-        <p className="text-xs uppercase tracking-[0.3em] font-black text-violet-400">
-          Compiling Live Intelligence
-        </p>
-        <motion.p
-          key={statusText}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          className="text-zinc-500 text-sm"
-        >
-          {statusText}
-        </motion.p>
-      </div>
-
-      <div className="flex gap-1.5">
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="w-1.5 h-1.5 bg-violet-500 rounded-full animate-pulse"
-            style={{ animationDelay: `${i * 0.2}s` }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
 // Dashboard Component
 // ─────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [experiments, setExperiments] = useState<Experiment[]>([]);
+  const [experiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
 
-  // ── State ──
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
-  const [trendKeys, setTrendKeys] = useState<string[]>([]);
-  const [positioningData, setPositioningData] = useState<PositioningPoint[]>([]);
-  const [distributionData, setDistributionData] = useState<DistributionPoint[]>([]);
-  const [whitespaceData, setWhitespaceData] = useState<WhitespacePoint[]>([]);
-  const [comparisonData, setComparisonData] = useState<ComparisonPoint[]>([]);
-
-  // ── Summary Cards derived from live data ──
-  const fastestGrowingCluster = trendKeys.length ? trendKeys[0] : "—";
-  const highestSaturation = distributionData.length ? distributionData[0].name : "—";
-  const topOpportunity = whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
-
-  // ─────────────────────────────────────────
-  // Fetch helper — 8s timeout, always adds client_id
-  // ─────────────────────────────────────────
-  async function apiFetch(path: string) {
-    // Append client_id if not already present
-    const url = path.includes("client_id") ? path : `${path}?client_id=${CLIENT_ID}`;
-    const cacheKey = `cs_cache:${url}`;
-
-    // Return cached data if fresh
-    const cached = getCached<unknown>(cacheKey);
-    if (cached !== null) {
-      console.log(`[cache hit] ${url}`);
-      return cached;
-    }
-
-    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    try {
-      const res = await fetch(`${API_BASE}${url}`, { headers, signal: controller.signal });
-      if (!res.ok) throw new Error(`${url} → ${res.status} ${res.statusText}`);
-      const json = await res.json();
-      setCache(cacheKey, json);
-      return json;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  // ─────────────────────────────────────────
-  // Data mapping helpers
-  // ─────────────────────────────────────────
-
-  const TOP_N_TRENDS = 5; // only show the N most prominent clusters
-
-  function mapTrends(raw: { clusters: { name: string; data: { date: string; value: number }[] }[] }): {
-    rows: TrendPoint[];
-    keys: string[];
-  } {
-    // Rank clusters by total signal volume, keep only top N
-    const ranked = [...raw.clusters]
-      .map((c) => ({ ...c, total: c.data.reduce((s, d) => s + d.value, 0) }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, TOP_N_TRENDS);
-
-    // Shorten names for legend readability (max 22 chars)
-    const shorten = (s: string) => s.length > 22 ? s.slice(0, 21) + "…" : s;
-
-    const dateMap: Record<string, TrendPoint> = {};
-    const keys: string[] = [];
-
-    ranked.forEach((cluster) => {
-      const label = shorten(cluster.name);
-      if (!keys.includes(label)) keys.push(label);
-      cluster.data.forEach(({ date, value }) => {
-        if (!dateMap[date]) dateMap[date] = { time: date };
-        dateMap[date][label] = (Number(dateMap[date][label] ?? 0)) + value;
-      });
-    });
-
-    const rows = Object.values(dateMap).sort((a, b) => String(a.time).localeCompare(String(b.time)));
-    return { rows, keys };
-  }
-
-  function mapPositioning(raw: { competitors: { name: string; x: number; y: number; dominant_cluster: string }[] }): PositioningPoint[] {
-    return raw.competitors.map((c, i) => ({
-      ...c,
-      fill: CLUSTER_COLORS[i % CLUSTER_COLORS.length],
-    }));
-  }
-
-  function mapDistribution(raw: { clusters: { name: string; percentage: number }[] }): DistributionPoint[] {
-    return raw.clusters.map((c, i) => ({
-      name: c.name,
-      value: c.percentage,
-      fill: PIE_COLORS[i % PIE_COLORS.length],
-    }));
-  }
-
-  function mapWhitespace(raw: { name: string; competition: number; growth: number; quadrant: string }[]): WhitespacePoint[] {
-    return raw.map((d) => ({
-      name: d.name,
-      x: d.competition,   // competition → X axis (low→high)
-      y: d.growth,        // growth rate → Y axis
-      fill: QUADRANT_FILLS[d.quadrant] ?? "#a78bfa",
-    }));
-  }
-
-  function mapComparison(raw: { competitor: string; pricing: number; quality: number; ai: number; convenience: number }[]): ComparisonPoint[] {
-    return raw.map((r) => ({ ...r, name: r.competitor }));
-  }
-
-  // ─────────────────────────────────────────
-  // Fetch all on mount — cache-first, 24-hour TTL
-  // ─────────────────────────────────────────
-  useEffect(() => {
-    async function loadDashboard(bustCache = false) {
-      if (bustCache) clearDashboardCache();
-      setLoading(true);
-      setError(null);
-      try {
-        const [trendsRes, posRes, distRes, oppRes, compRes] = await Promise.allSettled([
-          apiFetch(`/api/trends?client_id=${CLIENT_ID}`),
-          apiFetch(`/api/positioning?client_id=${CLIENT_ID}`),
-          apiFetch(`/api/distribution?client_id=${CLIENT_ID}`),
-          apiFetch(`/api/charts/opportunity?client_id=${CLIENT_ID}`),
-          apiFetch(`/api/charts/competitor-scores?client_id=${CLIENT_ID}`),
-        ]);
-
-        if (trendsRes.status === "fulfilled") {
-          const { rows, keys } = mapTrends(trendsRes.value);
-          setTrendData(rows);
-          setTrendKeys(keys);
-        } else {
-          console.warn("Trends fetch failed:", trendsRes.reason);
-        }
-
-        if (posRes.status === "fulfilled") {
-          setPositioningData(mapPositioning(posRes.value));
-        } else {
-          console.warn("Positioning fetch failed:", posRes.reason);
-        }
-
-        if (distRes.status === "fulfilled") {
-          setDistributionData(mapDistribution(distRes.value));
-        } else {
-          console.warn("Distribution fetch failed:", distRes.reason);
-        }
-
-        if (oppRes.status === "fulfilled") {
-          setWhitespaceData(mapWhitespace(oppRes.value));
-        } else {
-          console.warn("Opportunity fetch failed:", oppRes.reason);
-        }
-
-        if (compRes.status === "fulfilled") {
-          setComparisonData(mapComparison(compRes.value));
-        } else {
-          console.warn("Competitor scores fetch failed:", compRes.reason);
-        }
-
-      } catch (err: any) {
-        console.error("Dashboard critical error:", err);
-        setError(err.message || "Failed to connect to intelligence API.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // Expose reload function for the Refresh button
-    (window as any).__dashboardReload = () => loadDashboard(true);
-    loadDashboard();
-  }, []);
-
-  // ─────────────────────────────────────────
-  // Render states
-  // ─────────────────────────────────────────
-
-  if (loading) return <IntelligenceLoader />;
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center gap-6">
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-8 max-w-md text-center">
-          <AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-          <h2 className="text-white font-bold text-lg mb-2">Intelligence Feed Unavailable</h2>
-          <p className="text-zinc-500 text-sm mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-sm transition-all"
-          >
-            <RefreshCw className="w-4 h-4" /> Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Derived summary values from mock data
+  const fastestGrowingCluster = MOCK_TREND_KEYS[0]; // AI & Automation
+  const highestSaturation = MOCK_DISTRIBUTION_DATA[0].name; // Price & Value
+  const topOpportunity = MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
 
   // ─────────────────────────────────────────
   // Main render
@@ -481,14 +250,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Refresh button — clears 24h cache and re-fetches */}
-          <button
-            onClick={() => (window as any).__dashboardReload?.()}
-            title="Clear cache and refresh data"
-            className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-white/5 rounded-full text-[10px] font-bold tracking-widest uppercase text-zinc-400 hover:text-white hover:border-white/20 transition-all"
-          >
-            <RefreshCw className="w-3 h-3" /> Refresh Data
-          </button>
           <Link
             href="/experiment-builder"
             className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
@@ -528,14 +289,14 @@ export default function Dashboard() {
             <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 blur-3xl rounded-full" />
             <div className="bg-violet-500/10 p-3 rounded-2xl text-violet-400 w-fit mb-4 group-hover:scale-110 transition-transform"><Lightbulb className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Top Opportunity</h3>
-            <p className="text-xl font-bold text-white mb-2 truncate" title={topOpportunity}>{topOpportunity !== "—" ? topOpportunity : "Run pipeline first"}</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={topOpportunity}>{topOpportunity}</p>
             <p className="text-xs text-zinc-500 leading-relaxed">Highest ROI whitespace gap identified.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all flex flex-col justify-center overflow-hidden relative">
-            <div className="absolute top-0 right-0 w-24 h-24 bg-red-500/5 blur-3xl rounded-full" />
+            <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 blur-3xl rounded-full" />
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-4">Clusters Tracked</h3>
-            <p className="text-4xl font-black text-white">{trendKeys.length}</p>
+            <p className="text-4xl font-black text-white">{MOCK_TREND_KEYS.length}</p>
             <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes</p>
           </div>
         </div>
@@ -547,117 +308,93 @@ export default function Dashboard() {
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-            {/* Chart 1: Trend Over Time (live from /api/trends) */}
+            {/* Chart 1: Trend Over Time */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Trend Over Time</h3>
                 <p className="text-zinc-500 text-xs mt-1">Evolving messaging clusters</p>
-                {trendKeys[0] && (
-                  <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                    Rising: {trendKeys[0]}
-                  </div>
-                )}
+                <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
+                  Rising: {MOCK_TREND_KEYS[0]}
+                </div>
               </div>
               <div className="h-64 w-full">
-                {trendData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={trendData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                      <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                      <Tooltip content={<CustomTooltip />} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
-                      {trendKeys.map((key, i) => (
-                        <Line
-                          key={key}
-                          type="monotone"
-                          dataKey={key}
-                          stroke={CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
-                          strokeWidth={3}
-                          dot={{ r: 0 }}
-                          activeDot={{ r: 5, strokeWidth: 0 }}
-                        />
-                      ))}
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No trend data — run pipeline first</p>
-                  </div>
-                )}
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={MOCK_TREND_DATA}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                    {MOCK_TREND_KEYS.map((key, i) => (
+                      <Line
+                        key={key}
+                        type="monotone"
+                        dataKey={key}
+                        stroke={CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
+                        strokeWidth={3}
+                        dot={{ r: 0 }}
+                        activeDot={{ r: 5, strokeWidth: 0 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Chart 3: Messaging Distribution (live from /api/distribution) */}
+            {/* Chart 2: Theme Distribution */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Theme Distribution</h3>
                 <p className="text-zinc-500 text-xs mt-1">Dominant market narratives</p>
-                {distributionData[0] && (
-                  <div className="mt-4 bg-red-500/10 text-red-300 text-[10px] px-3 py-1.5 rounded-lg border border-red-500/20 inline-block font-bold uppercase tracking-widest">
-                    Oversaturated: {distributionData[0].name}
-                  </div>
-                )}
+                <div className="mt-4 bg-red-500/10 text-red-300 text-[10px] px-3 py-1.5 rounded-lg border border-red-500/20 inline-block font-bold uppercase tracking-widest">
+                  Oversaturated: {MOCK_DISTRIBUTION_DATA[0].name}
+                </div>
               </div>
               <div className="h-64 w-full relative">
-                {distributionData.length > 0 ? (
-                  <>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={distributionData} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
-                          {distributionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-25px]">
-                      <span className="text-3xl font-black text-white">{distributionData[0]?.value}%</span>
-                      <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{distributionData[0]?.name}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No distribution data</p>
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={MOCK_DISTRIBUTION_DATA} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
+                        {MOCK_DISTRIBUTION_DATA.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-25px]">
+                    <span className="text-3xl font-black text-white">{MOCK_DISTRIBUTION_DATA[0]?.value}%</span>
+                    <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{MOCK_DISTRIBUTION_DATA[0]?.name}</span>
                   </div>
-                )}
+                </>
               </div>
             </div>
 
-            {/* Chart 2: Competitor Positioning Map (live from /api/positioning) */}
+            {/* Chart 3: Competitor Positioning Map */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
                 <h3 className="font-bold text-xl text-white">Positioning Map</h3>
                 <p className="text-zinc-500 text-xs mt-1">Competitor strategy landscape</p>
-                {positioningData[0] && (
-                  <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                    Leader: {positioningData[0].name}
-                  </div>
-                )}
+                <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
+                  Leader: {MOCK_POSITIONING_DATA[0].name}
+                </div>
               </div>
               <div className="h-64 w-full relative">
                 <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Affordable ⟷ Premium</span>
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Feature ⟷ Outcome</span>
-                {positioningData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={chartStroke} />
-                      <XAxis type="number" dataKey="x" name="Premium" domain={[0, 1]} hide />
-                      <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 1]} hide />
-                      <ZAxis range={[150, 600]} />
-                      <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }} />
-                      {positioningData.map((entry, index) => (
-                        <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
-                      ))}
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No positioning data</p>
-                  </div>
-                )}
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={chartStroke} />
+                    <XAxis type="number" dataKey="x" name="Premium" domain={[0, 1]} hide />
+                    <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 1]} hide />
+                    <ZAxis range={[150, 600]} />
+                    <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }} />
+                    {MOCK_POSITIONING_DATA.map((entry, index) => (
+                      <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
+                    ))}
+                  </ScatterChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
@@ -668,44 +405,36 @@ export default function Dashboard() {
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
             Action &amp; Strategy <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-8">
 
-            {/* Chart 4: Opportunity / Whitespace (live from /api/charts/opportunity) */}
+            {/* Chart 4: Whitespace / Opportunity */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative">
               <div className="flex justify-between items-start mb-10">
                 <div>
                   <h3 className="font-bold text-xl text-white">Whitespace Opportunities</h3>
                   <p className="text-zinc-500 text-xs mt-1">Highest ROI focus areas</p>
                 </div>
-                {whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"]) && (
-                  <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
-                    Target: {whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name}
-                  </div>
-                )}
+                <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
+                  Target: {MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name}
+                </div>
               </div>
               <div className="h-72 w-full relative">
                 <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Comp ⟷ High Comp</span>
                 <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Growth ⟷ High Growth</span>
-                {whitespaceData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                      <CartesianGrid stroke={chartStroke} />
-                      <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.03} />
-                      <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.03} />
-                      <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
-                      <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
-                      <ZAxis range={[300, 800]} />
-                      <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
-                      {whitespaceData.map((entry, index) => (
-                        <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
-                      ))}
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No whitespace data — run pipeline first</p>
-                  </div>
-                )}
+                <ResponsiveContainer width="100%" height="100%">
+                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                    <CartesianGrid stroke={chartStroke} />
+                    <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.04} />
+                    <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.04} />
+                    <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
+                    <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
+                    <ZAxis range={[300, 800]} />
+                    <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
+                    {MOCK_WHITESPACE_DATA.map((entry, index) => (
+                      <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
+                    ))}
+                  </ScatterChart>
+                </ResponsiveContainer>
                 <div className="absolute top-[15%] left-[15%] pointer-events-none opacity-40">
                   <span className="text-[9px] font-black tracking-widest uppercase text-emerald-400">Golden Opportunity</span>
                 </div>
@@ -715,7 +444,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Chart 5: Competitor Comparison (live from /api/charts/competitor-scores) */}
+            {/* Chart 5: Competitor Strength */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="flex justify-between items-start mb-10">
                 <div>
@@ -727,135 +456,71 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="h-72 w-full">
-                {comparisonData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                      <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
-                      <Legend wrapperStyle={{ fontSize: "10px", paddingTop: "15px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
-                      <Bar dataKey="pricing" name="Pricing" fill={COMPETITOR_COLORS.pricing} radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="quality" name="Quality" fill={COMPETITOR_COLORS.quality} radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="ai" name="AI / Tech" fill={COMPETITOR_COLORS.ai} radius={[6, 6, 0, 0]} barSize={16} />
-                      <Bar dataKey="convenience" name="Convenience" fill={COMPETITOR_COLORS.convenience} radius={[6, 6, 0, 0]} barSize={16} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-zinc-600 text-xs uppercase tracking-widest">No competitor data</p>
-                  </div>
-                )}
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={MOCK_COMPARISON_DATA} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+                    <Legend wrapperStyle={{ fontSize: "10px", paddingTop: "15px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                    <Bar dataKey="pricing" name="Pricing" fill={COMPETITOR_COLORS.pricing} radius={[6, 6, 0, 0]} barSize={16} />
+                    <Bar dataKey="quality" name="Quality" fill={COMPETITOR_COLORS.quality} radius={[6, 6, 0, 0]} barSize={16} />
+                    <Bar dataKey="ai" name="AI / Tech" fill={COMPETITOR_COLORS.ai} radius={[6, 6, 0, 0]} barSize={16} />
+                    <Bar dataKey="convenience" name="Convenience" fill={COMPETITOR_COLORS.convenience} radius={[6, 6, 0, 0]} barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 🔹 SUGGESTED EXPERIMENTS — LIVE FROM DATABASE */}
+        {/* ── SUGGESTED EXPERIMENTS ── */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-<<<<<<< HEAD
             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
-=======
-             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
-             {experiments.length > 0 && (
-               <span className="text-emerald-400 text-[10px] font-bold">{experiments.length} live results</span>
-             )}
->>>>>>> 1686f6f2e13a3eb8ca974a3e8ed9d236e6a2d6a2
           </h2>
-
-          {experiments.length === 0 && (
-            <div className="text-center text-zinc-600 py-12 text-sm">
-              No experiments found. Ensure the backend API is running and the intelligence pipeline has been executed.
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
-            {experiments.slice(0, 9).map((exp, index) => {
-              const risk = exp.risk ?? 0;
-              const confidence = exp.confidence ?? 0;
-              const evidenceCount = exp.evidence?.length ?? 0;
+            {experiments.map((exp, index) => {
               const isActive = selectedExp === exp.recommended_action;
+              const riskLabel = exp.risk < 0.35 ? "Low Risk" : exp.risk < 0.65 ? "Medium Risk" : "High Risk";
+              const glowColor = exp.risk < 0.35 ? "bg-emerald-500/5" : exp.risk < 0.65 ? "bg-amber-500/5" : "bg-red-500/5";
+              const riskBadge = exp.risk < 0.35
+                ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
+                : exp.risk < 0.65
+                  ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
+                  : "bg-red-500/10 text-red-300 border-red-500/20";
+              const linkColor = exp.risk < 0.35 ? "text-emerald-400" : exp.risk < 0.65 ? "text-amber-400" : "text-red-400";
 
-              // Determine risk level and styling
-              let riskLabel: string;
-              let glowColor: string;
-              let riskBadgeClasses: string;
-              let linkClasses: string;
-
-              if (risk >= 0.92) {
-                riskLabel = "High Risk";
-                glowColor = "bg-red-500/5";
-                riskBadgeClasses = "bg-red-500/10 text-red-300 border-red-500/20";
-                linkClasses = "text-red-400";
-              } else if (risk >= 0.91) {
-                riskLabel = "Medium Risk";
-                glowColor = "bg-amber-500/5";
-                riskBadgeClasses = "bg-amber-500/10 text-amber-300 border-amber-500/20";
-                linkClasses = "text-amber-400";
-              } else {
-                riskLabel = "Low Risk";
-                glowColor = "bg-emerald-500/5";
-                riskBadgeClasses = "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
-                linkClasses = "text-emerald-400";
-              }
-
-              // Extract cluster name from insight
+              // Extract clean cluster name from insight
               const clusterMatch = exp.insight?.match(/Cluster '([^']+)'/);
-              const clusterName = clusterMatch ? clusterMatch[1] : "Unknown Cluster";
-              const displayName = clusterName.length > 55 ? clusterName.slice(0, 52) + "..." : clusterName;
+              const clusterName = clusterMatch ? clusterMatch[1] : `Theme ${index + 1}`;
 
               return (
                 <div
-                  key={exp.cluster_id || index}
+                  key={exp.cluster_id}
                   onClick={() => setSelectedExp(exp.recommended_action)}
                   className={`bg-zinc-900/40 backdrop-blur-sm border p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative cursor-pointer ${isActive ? "border-violet-500/40 ring-1 ring-violet-500/20" : "border-white/5"}`}
                 >
                   <div className={`absolute top-0 right-0 w-32 h-32 ${glowColor} blur-3xl rounded-full`} />
-
-                  {/* Active Indicator */}
                   {isActive && (
                     <div className="absolute top-4 right-4">
                       <CheckCircle2 className="w-5 h-5 text-violet-400" />
                     </div>
                   )}
-
-                  {/* Badges */}
                   <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    <span className={`${riskBadgeClasses} text-[10px] px-3 py-1 rounded-lg border font-bold uppercase tracking-widest`}>
-                      {riskLabel}
-                    </span>
+                    <span className={`${riskBadge} text-[10px] px-3 py-1 rounded-lg border font-bold uppercase tracking-widest`}>{riskLabel}</span>
                     <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">
-                      Risk: {risk.toFixed(3)}
-                    </span>
-                    <span className="bg-blue-500/10 text-blue-300 text-[10px] px-3 py-1 rounded-lg border border-blue-500/20 font-bold uppercase tracking-widest">
-                      {exp.trend}
+                      Confidence: {(exp.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
-
-                  {/* Cluster Name */}
-                  <h3 className="font-bold text-lg text-white mb-2">{displayName}</h3>
-
-                  {/* Recommended Action */}
-                  <p className="text-zinc-500 text-xs leading-relaxed mb-4">
-                    {exp.recommended_action}
-                  </p>
-
-                  {/* Evidence + Confidence */}
-                  <div className="flex items-center gap-4 text-[10px] text-zinc-600 uppercase tracking-widest font-bold mb-5">
-                    <span>{evidenceCount} evidence signals</span>
-                    <span>·</span>
-                    <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
-                  </div>
-
-                  {/* Layer Tags */}
+                  <h3 className="font-bold text-lg text-white mb-2">{clusterName}</h3>
+                  <p className="text-zinc-500 text-xs leading-relaxed mb-6">{exp.recommended_action}</p>
                   <div className="flex flex-wrap gap-2 mb-6">
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
                   </div>
-
-                  <Link href="/experiment-builder" className={`inline-flex items-center gap-2 ${linkClasses} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
+                  <Link href="/experiment-builder" className={`inline-flex items-center gap-2 ${linkColor} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
                     Launch Experiment <span className="text-lg">→</span>
                   </Link>
                 </div>
@@ -863,6 +528,7 @@ export default function Dashboard() {
             })}
           </div>
         </div>
+
       </div>
 
       <CopilotChat
