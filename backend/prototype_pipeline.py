@@ -2,7 +2,7 @@ import os
 import json
 
 # Force the specific remote Database link requested by the user
-os.environ["DATABASE_URL"] = "postgresql://neondb_owner:npg_y1zAFEGDUB3n@ep-morning-flower-a1adqnw7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+os.environ["DATABASE_URL"] = env.DATABASE_URL
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
