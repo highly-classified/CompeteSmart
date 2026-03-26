@@ -29,9 +29,15 @@ except Exception as e:
 app = FastAPI(title="CompeteSmart Intelligence API")
 
 # Allow the Next.js frontend to call this API
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://compete-smart.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
