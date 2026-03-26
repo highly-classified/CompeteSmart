@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, Send, X, Bot, User, Loader2, Sparkles, ChevronRight } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
@@ -19,12 +20,47 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeExperiment, setActiveExperiment] = useState<{title: string, cluster_id: string} | null>(null);
+  const [activeExperiment, setActiveExperiment] = useState<{ title: string, cluster_id: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load state from localStorage on mount
+  useEffect(() => {
+    const savedMessages = localStorage.getItem("copilotMessages");
+    const savedExperiment = localStorage.getItem("copilotActiveExperiment");
+    if (savedMessages) {
+      try {
+        setMessages(JSON.parse(savedMessages));
+      } catch (e) {
+        console.error("Failed to parse saved messages", e);
+      }
+    }
+    if (savedExperiment) {
+      try {
+        setActiveExperiment(JSON.parse(savedExperiment));
+      } catch (e) {
+        console.error("Failed to parse saved active experiment", e);
+      }
+    }
+  }, []);
+
+  // Save state to localStorage whenever it changes
+  useEffect(() => {
+    // Only save if we have messages (prevents overwriting with empty array on initial render before load)
+    if (messages.length > 0) {
+      localStorage.setItem("copilotMessages", JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (activeExperiment !== undefined) {
+      localStorage.setItem("copilotActiveExperiment", JSON.stringify(activeExperiment));
+    }
+  }, [activeExperiment]);
 
   // Initial Greeting & Pick 3
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
+    // Only show greeting if chat is opened, there are no messages, and we haven't loaded from storage
+    if (isOpen && messages.length === 0 && !localStorage.getItem("copilotMessages")) {
       const topExperiments = experiments.slice(0, 3);
       if (topExperiments.length > 0) {
         setMessages([
@@ -42,7 +78,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
         ]);
       }
     }
-  }, [isOpen]);
+  }, [isOpen, experiments]);
 
   // Handle choice from dashboard
   useEffect(() => {
@@ -57,11 +93,11 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   const selectAndPlan = async (title: string, clusterId: string) => {
     setActiveExperiment({ title, cluster_id: clusterId });
     setIsOpen(true);
-    
+
     // Add user preference message
     const userMsg: Message = { role: "user", content: `Let's work on the experiment: "${title}"` };
     setMessages(prev => [...prev, userMsg]);
-    
+
     setIsLoading(true);
     try {
       const response = await fetch("http://localhost:8000/api/copilot/chat", {
@@ -165,7 +201,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                     Target: {activeExperiment.title}
                   </span>
                 </div>
-                <button 
+                <button
                   onClick={() => setActiveExperiment(null)}
                   className="text-[9px] text-violet-400 font-bold hover:underline ml-2"
                 >
@@ -187,10 +223,27 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                       {msg.role === "user" ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                     </div>
                     <div className="space-y-3">
-                      <div className={`p-4 rounded-2xl text-[13px] leading-relaxed whitespace-pre-wrap ${msg.role === "user" ? "bg-violet-600 text-white rounded-tr-none shadow-lg shadow-violet-500/10" : "bg-white/5 text-zinc-100 rounded-tl-none border border-white/5"}`}>
-                        {msg.content}
+                      <div className={`p-4 rounded-2xl text-[13px] leading-relaxed ${msg.role === "user" ? "bg-violet-600 text-white rounded-tr-none shadow-lg shadow-violet-500/10 whitespace-pre-wrap" : "bg-white/5 text-zinc-100 rounded-tl-none border border-white/5 markdown-body"}`}>
+                        {msg.role === "user" ? (
+                          msg.content
+                        ) : (
+                          <ReactMarkdown
+                            components={{
+                              p: ({ node, ...props }) => <p className="mb-3 last:mb-0" {...props} />,
+                              ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-3 space-y-1" {...props} />,
+                              ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-3 space-y-1" {...props} />,
+                              li: ({ node, ...props }) => <li className="" {...props} />,
+                              h1: ({ node, ...props }) => <h1 className="text-sm font-bold mt-4 mb-2 text-white" {...props} />,
+                              h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-4 mb-2 text-white" {...props} />,
+                              h3: ({ node, ...props }) => <h3 className="text-sm font-bold mt-4 mb-2 text-violet-300" {...props} />,
+                              strong: ({ node, ...props }) => <strong className="font-bold text-violet-200" {...props} />,
+                            }}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        )}
                       </div>
-                      
+
                       {/* Pick 3 Options if it's the first message and no experiment is active */}
                       {i === 0 && msg.role === "assistant" && !activeExperiment && experiments.length > 0 && (
                         <div className="flex flex-col gap-2 mt-4">
