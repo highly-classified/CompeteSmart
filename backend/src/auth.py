@@ -1,27 +1,20 @@
-import os
-import firebase_admin
-from firebase_admin import credentials, auth
-from fastapi import Header, HTTPException, status, Depends
+from fastapi import Header, HTTPException, status
 from typing import Optional
-from dotenv import load_dotenv
 
-load_dotenv()
+# ─── Simple token auth (no Firebase) ───────────────────────────────────────────
+# The frontend stores the token in localStorage and sends it as Bearer <token>.
+# For the test login, the token is "dummy_token".
+# In production, replace this with a proper JWT verification.
 
-# Path to the Firebase service account JSON file
-SERVICE_ACCOUNT_PATH = os.path.join(os.getcwd(), "service-account.json")
+VALID_TOKENS = {
+    "dummy_token": "admin_test_user",
+}
 
-# Initialize Firebase Admin SDK
-if not firebase_admin._apps:
-    try:
-        cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
-        firebase_admin.initialize_app(cred)
-    except Exception as e:
-        print(f"Error initializing Firebase Admin SDK: {e}")
 
-async def get_current_user(authorization: Optional[str] = Header(None)):
+async def get_current_user(authorization: Optional[str] = Header(None)) -> str:
     """
-    FastAPI dependency to verify Firebase ID tokens.
-    Extracts the 'uid' from the verified token.
+    FastAPI dependency to verify API tokens.
+    Accepts any token registered in VALID_TOKENS.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -29,41 +22,15 @@ async def get_current_user(authorization: Optional[str] = Header(None)):
             detail="Missing or invalid Authorization header",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    token = authorization.split(" ")[1]
-    
-    # Support for dummy token used in test login
-    if token == "dummy_token":
-        return "admin_test_user"
-    
-    try:
-        # Verify the Firebase ID token
-        decoded_token = auth.verify_id_token(token)
-        user_id = decoded_token.get("uid")
-        
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token missing 'uid' claim",
-            )
-            
-        return user_id
-        
-    except auth.ExpiredIdTokenError:
+
+    token = authorization.split(" ", 1)[1].strip()
+
+    user_id = VALID_TOKENS.get(token)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Firebase ID token has expired",
+            detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except auth.InvalidIdTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Firebase ID token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+
+    return user_id
