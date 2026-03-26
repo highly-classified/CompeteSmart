@@ -28,9 +28,10 @@ except Exception as e:
 
 app = FastAPI(title="CompeteSmart Intelligence API")
 
+# Allow the Next.js frontend to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to your frontend URL
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -45,7 +46,6 @@ class CopilotChatRequest(BaseModel):
 
 class CopilotChatResponse(BaseModel):
     response: str
-
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
