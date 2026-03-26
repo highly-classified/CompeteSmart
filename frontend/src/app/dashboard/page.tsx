@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
   LineChart,
   Line,
@@ -20,10 +20,11 @@ import {
   ZAxis,
   ReferenceArea,
 } from "recharts";
-import { Target, TrendingUp, AlertTriangle, Lightbulb, CheckCircle2 } from "lucide-react";
+import { Target, TrendingUp, AlertTriangle, Lightbulb, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
 
 // ─────────────────────────────────────────────
@@ -41,7 +42,44 @@ type ComparisonPoint = { name: string; pricing: number; quality: number; ai: num
 // ─────────────────────────────────────────────
 
 const API_BASE = "http://127.0.0.1:8000";
-const CLIENT_ID = 1; // Default client ID for the test login
+const CLIENT_ID = 1;
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// ─── Cache Helpers ───────────────────────────────────────────────────────────
+
+function getCached<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { ts, data } = JSON.parse(raw) as { ts: number; data: T };
+    if (Date.now() - ts > CACHE_TTL_MS) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key: string, data: unknown): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch { }
+}
+
+function clearDashboardCache(): void {
+  if (typeof window === "undefined") return;
+  [
+    `/api/trends?client_id=${CLIENT_ID}`,
+    `/api/positioning?client_id=${CLIENT_ID}`,
+    `/api/distribution?client_id=${CLIENT_ID}`,
+    `/api/charts/opportunity?client_id=${CLIENT_ID}`,
+    `/api/charts/competitor-scores?client_id=${CLIENT_ID}`,
+  ].forEach((k) => localStorage.removeItem(`cs_cache:${k}`));
+}
 
 // Color palette for dynamic keys
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
@@ -235,20 +273,33 @@ export default function Dashboard() {
   const topOpportunity = whitespaceData.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
 
   // ─────────────────────────────────────────
-  // Fetch helper — 8s timeout per request
+  // Fetch helper — 8s timeout, always adds client_id
   // ─────────────────────────────────────────
   async function apiFetch(path: string) {
+    // Append client_id if not already present
+    const url = path.includes("client_id") ? path : `${path}?client_id=${CLIENT_ID}`;
+    const cacheKey = `cs_cache:${url}`;
+
+    // Return cached data if fresh
+    const cached = getCached<unknown>(cacheKey);
+    if (cached !== null) {
+      console.log(`[cache hit] ${url}`);
+      return cached;
+    }
+
     const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     try {
-      const res = await fetch(`${API_BASE}${path}`, { headers, signal: controller.signal });
-      if (!res.ok) throw new Error(`${path} → ${res.status} ${res.statusText}`);
-      return res.json();
+      const res = await fetch(`${API_BASE}${url}`, { headers, signal: controller.signal });
+      if (!res.ok) throw new Error(`${url} → ${res.status} ${res.statusText}`);
+      const json = await res.json();
+      setCache(cacheKey, json);
+      return json;
     } finally {
       clearTimeout(timeout);
     }
@@ -258,19 +309,30 @@ export default function Dashboard() {
   // Data mapping helpers
   // ─────────────────────────────────────────
 
+  const TOP_N_TRENDS = 5; // only show the N most prominent clusters
+
   function mapTrends(raw: { clusters: { name: string; data: { date: string; value: number }[] }[] }): {
     rows: TrendPoint[];
     keys: string[];
   } {
-    // Build a combined time-series table keyed on "date"
+    // Rank clusters by total signal volume, keep only top N
+    const ranked = [...raw.clusters]
+      .map((c) => ({ ...c, total: c.data.reduce((s, d) => s + d.value, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, TOP_N_TRENDS);
+
+    // Shorten names for legend readability (max 22 chars)
+    const shorten = (s: string) => s.length > 22 ? s.slice(0, 21) + "…" : s;
+
     const dateMap: Record<string, TrendPoint> = {};
     const keys: string[] = [];
 
-    raw.clusters.forEach((cluster) => {
-      keys.push(cluster.name);
+    ranked.forEach((cluster) => {
+      const label = shorten(cluster.name);
+      if (!keys.includes(label)) keys.push(label);
       cluster.data.forEach(({ date, value }) => {
         if (!dateMap[date]) dateMap[date] = { time: date };
-        dateMap[date][cluster.name] = value;
+        dateMap[date][label] = (Number(dateMap[date][label] ?? 0)) + value;
       });
     });
 
@@ -296,8 +358,8 @@ export default function Dashboard() {
   function mapWhitespace(raw: { name: string; competition: number; growth: number; quadrant: string }[]): WhitespacePoint[] {
     return raw.map((d) => ({
       name: d.name,
-      x: d.competition,
-      y: d.growth,
+      x: d.competition,   // competition → X axis (low→high)
+      y: d.growth,        // growth rate → Y axis
       fill: QUADRANT_FILLS[d.quadrant] ?? "#a78bfa",
     }));
   }
@@ -307,10 +369,11 @@ export default function Dashboard() {
   }
 
   // ─────────────────────────────────────────
-  // Fetch all on mount — resilient: one failure won't block the dashboard
+  // Fetch all on mount — cache-first, 24-hour TTL
   // ─────────────────────────────────────────
   useEffect(() => {
-    async function loadDashboard() {
+    async function loadDashboard(bustCache = false) {
+      if (bustCache) clearDashboardCache();
       setLoading(true);
       setError(null);
       try {
@@ -318,8 +381,8 @@ export default function Dashboard() {
           apiFetch(`/api/trends?client_id=${CLIENT_ID}`),
           apiFetch(`/api/positioning?client_id=${CLIENT_ID}`),
           apiFetch(`/api/distribution?client_id=${CLIENT_ID}`),
-          apiFetch(`/api/charts/opportunity`),
-          apiFetch(`/api/charts/competitor-scores`),
+          apiFetch(`/api/charts/opportunity?client_id=${CLIENT_ID}`),
+          apiFetch(`/api/charts/competitor-scores?client_id=${CLIENT_ID}`),
         ]);
 
         if (trendsRes.status === "fulfilled") {
@@ -355,14 +418,15 @@ export default function Dashboard() {
         }
 
       } catch (err: any) {
-        // Only show the global error state for catastrophic failures
         console.error("Dashboard critical error:", err);
         setError(err.message || "Failed to connect to intelligence API.");
       } finally {
-        // Always exit loading — never leave the user stuck
         setLoading(false);
       }
     }
+
+    // Expose reload function for the Refresh button
+    (window as any).__dashboardReload = () => loadDashboard(true);
     loadDashboard();
   }, []);
 
@@ -417,6 +481,14 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* Refresh button — clears 24h cache and re-fetches */}
+          <button
+            onClick={() => (window as any).__dashboardReload?.()}
+            title="Clear cache and refresh data"
+            className="hidden md:flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-white/5 rounded-full text-[10px] font-bold tracking-widest uppercase text-zinc-400 hover:text-white hover:border-white/20 transition-all"
+          >
+            <RefreshCw className="w-3 h-3" /> Refresh Data
+          </button>
           <Link
             href="/experiment-builder"
             className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
@@ -589,6 +661,7 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        </div>
 
         {/* ── ACTION & STRATEGY ── */}
         <div>
@@ -681,7 +754,7 @@ export default function Dashboard() {
         {/* 🔹 SUGGESTED EXPERIMENTS */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
+            Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
 
@@ -752,9 +825,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <CopilotChat 
-        selectedExperiment={selectedExp || undefined} 
-        experiments={experiments} 
+      <CopilotChat
+        selectedExperiment={selectedExp || undefined}
+        experiments={experiments}
       />
     </div>
   );
