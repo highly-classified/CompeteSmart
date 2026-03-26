@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
 from src.database import get_db, engine
@@ -27,9 +28,10 @@ except Exception as e:
 
 app = FastAPI(title="CompeteSmart Intelligence API")
 
+# Allow the Next.js frontend to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this to your frontend URL
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,10 +42,10 @@ class CopilotChatRequest(BaseModel):
     experiment_text: str
     user_query: str
     chat_history: Optional[List[Dict[str, str]]] = []
+    cluster_id: Optional[str] = None
 
 class CopilotChatResponse(BaseModel):
     response: str
-
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
@@ -390,7 +392,8 @@ def copilot_chat(request: CopilotChatRequest):
         response_text = chat_with_experiment(
             experiment_text=request.experiment_text,
             user_query=request.user_query,
-            chat_history=request.chat_history
+            chat_history=request.chat_history,
+            cluster_id=request.cluster_id
         )
         return CopilotChatResponse(response=response_text)
     except Exception as e:
