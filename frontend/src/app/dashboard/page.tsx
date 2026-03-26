@@ -324,7 +324,7 @@ export default function Dashboard() {
                     <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
                     {MOCK_TREND_KEYS.map((key, i) => (
                       <Line
                         key={key}
@@ -360,10 +360,10 @@ export default function Dashboard() {
                         ))}
                       </Pie>
                       <Tooltip content={<CustomTooltip />} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
                     </PieChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-[-25px]">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-[70px]">
                     <span className="text-3xl font-black text-white">{MOCK_DISTRIBUTION_DATA[0]?.value}%</span>
                     <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{MOCK_DISTRIBUTION_DATA[0]?.name}</span>
                   </div>

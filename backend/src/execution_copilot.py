@@ -76,7 +76,7 @@ OPERATIONAL GUIDELINES:
 
     # 3. Gemini Chat Initialization
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Convert history format to Gemini's format
         gemini_history = []
