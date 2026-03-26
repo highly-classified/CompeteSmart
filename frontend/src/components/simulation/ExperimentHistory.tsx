@@ -8,30 +8,31 @@ import { loadExperiments, SavedExperiment } from "./SimulationOrchestrator";
 
 // ─── Mini preview chart (static sparkline) ───────────────────────────────────
 
-function MiniPreview({ data }: { data: SavedExperiment["chartData"] }) {
-    if (!data?.length) return <div className="w-full h-full bg-zinc-800 rounded-xl" />;
+function MiniPreview({ data, uid }: { data: SavedExperiment["chartData"]; uid: string }) {
+    if (!data?.length) return <div className="w-full h-full bg-zinc-700 rounded-xl" />;
     const max = Math.max(...data.map((d) => d.differentiation));
     const min = Math.min(...data.map((d) => d.differentiation));
     const range = max - min || 1;
     const W = 200, H = 80;
     const pts = data.map((d, i) => {
         const x = (i / (data.length - 1)) * W;
-        const y = H - ((d.differentiation - min) / range) * H;
+        const y = H - ((d.differentiation - min) / range) * (H * 0.9) + H * 0.05;
         return `${x},${y}`;
     }).join(" ");
+    const gradId = `grad-${uid}`;
     return (
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
-            <polyline points={pts} fill="none" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            <polyline
-                points={`0,${H} ${pts} ${W},${H}`}
-                fill="url(#grad)" stroke="none"
-            />
             <defs>
-                <linearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.3" />
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.4" />
                     <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
                 </linearGradient>
             </defs>
+            <polyline
+                points={`0,${H} ${pts} ${W},${H}`}
+                fill={`url(#${gradId})`} stroke="none"
+            />
+            <polyline points={pts} fill="none" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
 }
@@ -147,21 +148,19 @@ export function ExperimentHistory({ onBack }: { onBack: () => void }) {
                     </button>
                 </motion.div>
             ) : (
-                <motion.div
-                    initial="hidden" animate="visible"
-                    variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.05 } } }}
-                    className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5"
-                >
-                    {experiments.map((exp) => (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                    {experiments.map((exp, index) => (
                         <motion.div
                             key={exp.id}
-                            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: index * 0.05 }}
                             onClick={() => setSelected(exp)}
-                            className="group bg-zinc-900/60 border border-white/5 rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/30 hover:shadow-[0_0_30px_rgba(139,92,246,0.08)] transition-all"
+                            className="group bg-zinc-800 border border-white/10 rounded-2xl overflow-hidden cursor-pointer hover:border-violet-500/40 hover:bg-zinc-700 hover:shadow-[0_0_30px_rgba(139,92,246,0.15)] transition-all"
                         >
                             {/* Thumbnail */}
-                            <div className="h-36 bg-zinc-800/50 p-3 border-b border-white/5 group-hover:bg-zinc-800 transition-colors">
-                                <MiniPreview data={exp.chartData} />
+                            <div className="h-36 bg-slate-900 p-3 border-b border-white/10 group-hover:bg-zinc-800 transition-colors">
+                                <MiniPreview data={exp.chartData} uid={exp.id} />
                             </div>
 
                             {/* Info */}
@@ -192,7 +191,7 @@ export function ExperimentHistory({ onBack }: { onBack: () => void }) {
                             </div>
                         </motion.div>
                     ))}
-                </motion.div>
+                </div>
             )}
         </div>
     );
