@@ -1,17 +1,44 @@
+"use client";
+
+import { useState } from "react";
 import { SimulationOrchestrator } from "@/components/simulation/SimulationOrchestrator";
-
-// This isolates the experimental builder routing to exactly where you requested.
-// You can seamlessly link to this page from anywhere in your main App dashboard using <Link href="/experiment-builder">.
-
-export const metadata = {
-    title: "Experiment Builder | CompeteSmart Engine",
-    description: "Simulate and project strategic pivots against your competitors.",
-};
+import { ExperimentHistory } from "@/components/simulation/ExperimentHistory";
+import { History, FlaskConical } from "lucide-react";
 
 export default function ExperimentBuilderPage() {
+    const [view, setView] = useState<"builder" | "history">("builder");
+
     return (
         <main className="bg-black/95 text-white min-h-screen overflow-x-hidden selection:bg-emerald-500/30 font-sans">
-            <SimulationOrchestrator />
+            {/* Top nav toggle bar */}
+            <div className="border-b border-white/5 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40">
+                <div className="max-w-7xl mx-auto px-6 flex items-center gap-1 h-14">
+                    <button
+                        onClick={() => setView("builder")}
+                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${view === "builder"
+                                ? "bg-white/10 text-white"
+                                : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                            }`}
+                    >
+                        <FlaskConical className="w-3.5 h-3.5" /> Experiment Builder
+                    </button>
+                    <button
+                        onClick={() => setView("history")}
+                        className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-all ${view === "history"
+                                ? "bg-white/10 text-white"
+                                : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5"
+                            }`}
+                    >
+                        <History className="w-3.5 h-3.5" /> History
+                    </button>
+                </div>
+            </div>
+
+            {view === "builder" ? (
+                <SimulationOrchestrator />
+            ) : (
+                <ExperimentHistory onBack={() => setView("builder")} />
+            )}
         </main>
     );
 }
