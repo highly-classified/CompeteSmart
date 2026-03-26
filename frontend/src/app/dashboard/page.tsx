@@ -141,10 +141,10 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-[#e4e4e7] p-4 md:p-8 font-sans selection:bg-violet-500/30">
-      
+
       <div className="flex items-center justify-between mb-8 max-w-7xl mx-auto">
         <div>
-          <button 
+          <button
             onClick={() => {
               localStorage.removeItem("token");
               window.location.href = "/";
@@ -169,7 +169,7 @@ export default function Dashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto space-y-8">
-        
+
         {/* 🔹 TOP SECTION: SUMMARY */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
@@ -214,7 +214,7 @@ export default function Dashboard() {
         {/* 🔹 MIDDLE SECTION: ANALYSIS */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
+            Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Chart 1: Trend Over Time */}
@@ -234,9 +234,9 @@ export default function Dashboard() {
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', paddingTop: '20px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
-                    <Line type="monotone" dataKey="AI" stroke="#a78bfa" strokeWidth={4} dot={{r: 0, fill: '#a78bfa'}} activeDot={{ r: 6, strokeWidth: 0 }} />
-                    <Line type="monotone" dataKey="Pricing" stroke="#f87171" strokeWidth={4} dot={{r: 0}} activeDot={{ r: 6, strokeWidth: 0 }} />
-                    <Line type="monotone" dataKey="Quality" stroke="#60a5fa" strokeWidth={4} dot={{r: 0}} activeDot={{ r: 6, strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="AI" stroke="#a78bfa" strokeWidth={4} dot={{ r: 0, fill: '#a78bfa' }} activeDot={{ r: 6, strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="Pricing" stroke="#f87171" strokeWidth={4} dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="Quality" stroke="#60a5fa" strokeWidth={4} dot={{ r: 0 }} activeDot={{ r: 6, strokeWidth: 0 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -318,7 +318,7 @@ export default function Dashboard() {
                     <CartesianGrid stroke={chartStroke} />
                     <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.03} />
                     <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.03} />
-                    
+
                     <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
                     <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
                     <ZAxis range={[300, 800]} />
@@ -355,7 +355,7 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <Tooltip content={<CustomTooltip />} cursor={{fill: 'rgba(255,255,255,0.03)'}} />
+                    <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                     <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '15px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }} />
                     <Bar dataKey="Pricing" fill="#f87171" radius={[6, 6, 0, 0]} barSize={20} />
                     <Bar dataKey="Quality" fill="#60a5fa" radius={[6, 6, 0, 0]} barSize={20} />
@@ -370,67 +370,94 @@ export default function Dashboard() {
         {/* 🔹 SUGGESTED EXPERIMENTS */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
-             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
+            Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
 
-            {/* Experiment 1 */}
+            {/* Experiment 1: Instant Booking Guarantee */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full" />
               <div className="flex items-center gap-2 mb-4">
                 <span className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">Low Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.22</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.92</span>
               </div>
-              <h3 className="font-bold text-lg text-white mb-2">Deploy AI-Powered Messaging</h3>
+              <h3 className="font-bold text-lg text-white mb-2">Instant Booking Guarantee</h3>
               <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Leverage AI-driven communication to differentiate from pricing-focused competitors. Intelligence Layer shows 3x growth momentum with low saturation.
+                Implement a 30-minute service guarantee to drive repeat customer behavior. Optimized for high-density urban zones.
               </p>
+
+              <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                  <span className="w-1 h-1 bg-emerald-500 rounded-full" /> Traceability
+                </p>
+                <p className="text-[11px] text-zinc-300 leading-relaxed italic">
+                  UrbanCompany tested 30-min service guarantee in Bangalore last month → <span className="text-emerald-400 font-semibold">+18% increase in repeat bookings</span>
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Intelligence Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Decision Layer</span>
               </div>
               <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
                 Launch Experiment <span className="text-lg">→</span>
               </Link>
             </div>
 
-            {/* Experiment 2 */}
+            {/* Experiment 2: Subscription-Based Home Services */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
               <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
               <div className="flex items-center gap-2 mb-4">
                 <span className="bg-amber-500/10 text-amber-300 text-[10px] px-3 py-1 rounded-lg border border-amber-500/20 font-bold uppercase tracking-widest">Medium Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.51</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.88</span>
               </div>
-              <h3 className="font-bold text-lg text-white mb-2">Premium Verified Professionals Tier</h3>
+              <h3 className="font-bold text-lg text-white mb-2">Subscription Home Services</h3>
               <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Launch a verified-only premium service tier. Decision Layer recommends targeting high-value urban segments. Trust Layer flags moderate positioning mismatch.
+                Launch a recurring service model to stabilize monthly revenue and increase LTV. Target UC Plus lookalikes.
               </p>
+
+              <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                  <span className="w-1 h-1 bg-amber-500 rounded-full" /> Traceability
+                </p>
+                <p className="text-[11px] text-zinc-300 leading-relaxed italic">
+                  UrbanCompany expanded “UC Plus” subscription aggressively last month → <span className="text-amber-400 font-semibold">+40% increase in monthly recurring revenue</span>
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Retention Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Revenue Layer</span>
               </div>
               <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
                 Launch Experiment <span className="text-lg">→</span>
               </Link>
             </div>
 
-            {/* Experiment 3 */}
+            {/* Experiment 3: Dynamic Surge Pricing */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full" />
               <div className="flex items-center gap-2 mb-4">
                 <span className="bg-red-500/10 text-red-300 text-[10px] px-3 py-1 rounded-lg border border-red-500/20 font-bold uppercase tracking-widest">High Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.78</span>
+                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.54</span>
               </div>
-              <h3 className="font-bold text-lg text-white mb-2">Aggressive Discount Campaign</h3>
+              <h3 className="font-bold text-lg text-white mb-2">Dynamic Surge Pricing</h3>
               <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Undercut competitor pricing to capture market share. Trust Layer warns of high saturation and low trend momentum. Decision Layer advises against for premium clients.
+                Optimize unit economics by introducing surge pricing during hyper-peak windows. Balance revenue with churn.
               </p>
+
+              <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
+                <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                  <span className="w-1 h-1 bg-red-500 rounded-full" /> Traceability
+                </p>
+                <p className="text-[11px] text-zinc-300 leading-relaxed italic">
+                  UrbanCompany experimented with peak-hour surge pricing 10 days ago → <span className="text-red-400 font-semibold">+15% revenue uplift but slight user drop-off</span>
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Decision Layer</span>
+                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium border border-white/5">Risk Layer</span>
               </div>
               <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-red-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
                 Launch Experiment <span className="text-lg">→</span>
@@ -441,9 +468,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <CopilotChat 
-        selectedExperiment={selectedExp || undefined} 
-        experiments={experiments} 
+      <CopilotChat
+        selectedExperiment={selectedExp || undefined}
+        experiments={experiments}
       />
     </div>
   );
