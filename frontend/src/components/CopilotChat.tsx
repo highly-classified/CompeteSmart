@@ -85,7 +85,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
     if (dashboardSelected) {
       const exp = experiments.find(e => e.recommended_action === dashboardSelected);
       if (exp) {
-        selectAndPlan(exp.recommended_action, exp.cluster_id);
+        setActiveExperiment({ title: exp.recommended_action, cluster_id: exp.cluster_id });
       }
     }
   }, [dashboardSelected]);
