@@ -118,31 +118,31 @@ const MOCK_COMPARISON_DATA: ComparisonPoint[] = [
 
 const MOCK_EXPERIMENTS: Experiment[] = [
   {
-    insight: "Cluster 'AI & Automation' is showing a rising trend with 74% momentum.",
-    cluster_id: "ai-automation",
+    insight: "UrbanCompany tested 30-min service guarantee in Bangalore last month → +18% increase in repeat bookings",
+    cluster_id: "Instant Booking Guarantee",
+    trend: "rising",
+    confidence: 0.92,
+    risk: 0.15,
+    recommended_action: "Implement a 30-minute service guarantee to drive repeat customer behavior. Optimized for high-density urban zones.",
+    evidence: ["sig-1", "sig-2"],
+  },
+  {
+    insight: "UrbanCompany expanded “UC Plus” subscription aggressively last month → +40% increase in monthly recurring revenue",
+    cluster_id: "Subscription Home Services",
     trend: "rising",
     confidence: 0.88,
-    risk: 0.18,
-    recommended_action: "Deploy AI-powered scheduling and smart-match messaging to differentiate from pricing-focused competitors. Leverage 3x growth momentum with low saturation.",
-    evidence: ["sig-1", "sig-2", "sig-3", "sig-4", "sig-5"],
+    risk: 0.45,
+    recommended_action: "Launch a recurring service model to stabilize monthly revenue and increase LTV. Target UC Plus lookalikes.",
+    evidence: ["sig-3", "sig-4"],
   },
   {
-    insight: "Cluster 'Senior Care' is showing a rising trend with 62% momentum.",
-    cluster_id: "senior-care",
-    trend: "rising",
-    confidence: 0.75,
-    risk: 0.34,
-    recommended_action: "Launch a verified-only premium service tier targeting elderly households. Trust Layer recommends credentialed professionals and background checks.",
-    evidence: ["sig-6", "sig-7", "sig-8"],
-  },
-  {
-    insight: "Cluster 'Price & Value' is showing a declining trend with 38% saturation.",
-    cluster_id: "price-value",
+    insight: "UrbanCompany experimented with peak-hour surge pricing 10 days ago → +15% revenue uplift but slight user drop-off",
+    cluster_id: "Dynamic Surge Pricing",
     trend: "declining",
-    confidence: 0.55,
-    risk: 0.76,
-    recommended_action: "Avoid aggressive discount campaigns. High saturation and declining momentum make this a low-ROI play. Decision Layer advises against for premium positioning.",
-    evidence: ["sig-9", "sig-10"],
+    confidence: 0.65,
+    risk: 0.82,
+    recommended_action: "Optimize unit economics by introducing surge pricing during hyper-peak windows. Balance revenue with churn.",
+    evidence: ["sig-5", "sig-6"],
   },
 ];
 
@@ -490,11 +490,6 @@ export default function Dashboard() {
                   ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
                   : "bg-red-500/10 text-red-300 border-red-500/20";
               const linkColor = exp.risk < 0.35 ? "text-emerald-400" : exp.risk < 0.65 ? "text-amber-400" : "text-red-400";
-
-              // Extract clean cluster name from insight
-              const clusterMatch = exp.insight?.match(/Cluster '([^']+)'/);
-              const clusterName = clusterMatch ? clusterMatch[1] : `Theme ${index + 1}`;
-
               return (
                 <div
                   key={exp.cluster_id}
@@ -513,8 +508,18 @@ export default function Dashboard() {
                       Confidence: {(exp.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
-                  <h3 className="font-bold text-lg text-white mb-2">{clusterName}</h3>
+                  <h3 className="font-bold text-lg text-white mb-2">{exp.cluster_id}</h3>
                   <p className="text-zinc-500 text-xs leading-relaxed mb-6">{exp.recommended_action}</p>
+
+                  <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
+                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                      <span className={`w-1 h-1 rounded-full ${exp.risk < 0.35 ? "bg-emerald-500" : exp.risk < 0.65 ? "bg-amber-500" : "bg-red-500"}`} /> Traceability
+                    </p>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed italic">
+                      {exp.insight}
+                    </p>
+                  </div>
+
                   <div className="flex flex-wrap gap-2 mb-6">
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
@@ -535,6 +540,6 @@ export default function Dashboard() {
         selectedExperiment={selectedExp || undefined}
         experiments={experiments}
       />
-    </div>
+    </div >
   );
 }
