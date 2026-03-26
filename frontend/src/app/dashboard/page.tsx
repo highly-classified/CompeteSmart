@@ -751,76 +751,116 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* 🔹 SUGGESTED EXPERIMENTS */}
+        {/* 🔹 SUGGESTED EXPERIMENTS — LIVE FROM DATABASE */}
         <div>
           <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+<<<<<<< HEAD
             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
+=======
+             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
+             {experiments.length > 0 && (
+               <span className="text-emerald-400 text-[10px] font-bold">{experiments.length} live results</span>
+             )}
+>>>>>>> 1686f6f2e13a3eb8ca974a3e8ed9d236e6a2d6a2
           </h2>
+
+          {experiments.length === 0 && (
+            <div className="text-center text-zinc-600 py-12 text-sm">
+              No experiments found. Ensure the backend API is running and the intelligence pipeline has been executed.
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
+            {experiments.slice(0, 9).map((exp, index) => {
+              const risk = exp.risk ?? 0;
+              const confidence = exp.confidence ?? 0;
+              const evidenceCount = exp.evidence?.length ?? 0;
+              const isActive = selectedExp === exp.recommended_action;
 
-            {/* Experiment 1 */}
-            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full" />
-              <div className="flex items-center gap-2 mb-4">
-                <span className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">Low Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.22</span>
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">Deploy AI-Powered Messaging</h3>
-              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Leverage AI-driven communication to differentiate from pricing-focused competitors. Intelligence Layer shows 3x growth momentum with low saturation.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
-              </div>
-              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
-                Launch Experiment <span className="text-lg">→</span>
-              </Link>
-            </div>
+              // Determine risk level and styling
+              let riskLabel: string;
+              let glowColor: string;
+              let riskBadgeClasses: string;
+              let linkClasses: string;
 
-            {/* Experiment 2 */}
-            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
-              <div className="flex items-center gap-2 mb-4">
-                <span className="bg-amber-500/10 text-amber-300 text-[10px] px-3 py-1 rounded-lg border border-amber-500/20 font-bold uppercase tracking-widest">Medium Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.51</span>
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">Premium Verified Professionals Tier</h3>
-              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Launch a verified-only premium service tier. Decision Layer recommends targeting high-value urban segments. Trust Layer flags moderate positioning mismatch.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
-              </div>
-              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
-                Launch Experiment <span className="text-lg">→</span>
-              </Link>
-            </div>
+              if (risk >= 0.92) {
+                riskLabel = "High Risk";
+                glowColor = "bg-red-500/5";
+                riskBadgeClasses = "bg-red-500/10 text-red-300 border-red-500/20";
+                linkClasses = "text-red-400";
+              } else if (risk >= 0.91) {
+                riskLabel = "Medium Risk";
+                glowColor = "bg-amber-500/5";
+                riskBadgeClasses = "bg-amber-500/10 text-amber-300 border-amber-500/20";
+                linkClasses = "text-amber-400";
+              } else {
+                riskLabel = "Low Risk";
+                glowColor = "bg-emerald-500/5";
+                riskBadgeClasses = "bg-emerald-500/10 text-emerald-300 border-emerald-500/20";
+                linkClasses = "text-emerald-400";
+              }
 
-            {/* Experiment 3 */}
-            <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full" />
-              <div className="flex items-center gap-2 mb-4">
-                <span className="bg-red-500/10 text-red-300 text-[10px] px-3 py-1 rounded-lg border border-red-500/20 font-bold uppercase tracking-widest">High Risk</span>
-                <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">Trust: 0.78</span>
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">Aggressive Discount Campaign</h3>
-              <p className="text-zinc-500 text-xs leading-relaxed mb-6">
-                Undercut competitor pricing to capture market share. Trust Layer warns of high saturation and low trend momentum. Decision Layer advises against for premium clients.
-              </p>
-              <div className="flex flex-wrap gap-2 mb-6">
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
-              </div>
-              <Link href="/experiment-builder" className="inline-flex items-center gap-2 text-red-400 text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all">
-                Launch Experiment <span className="text-lg">→</span>
-              </Link>
-            </div>
+              // Extract cluster name from insight
+              const clusterMatch = exp.insight?.match(/Cluster '([^']+)'/);
+              const clusterName = clusterMatch ? clusterMatch[1] : "Unknown Cluster";
+              const displayName = clusterName.length > 55 ? clusterName.slice(0, 52) + "..." : clusterName;
 
+              return (
+                <div
+                  key={exp.cluster_id || index}
+                  onClick={() => setSelectedExp(exp.recommended_action)}
+                  className={`bg-zinc-900/40 backdrop-blur-sm border p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative cursor-pointer ${isActive ? "border-violet-500/40 ring-1 ring-violet-500/20" : "border-white/5"}`}
+                >
+                  <div className={`absolute top-0 right-0 w-32 h-32 ${glowColor} blur-3xl rounded-full`} />
+
+                  {/* Active Indicator */}
+                  {isActive && (
+                    <div className="absolute top-4 right-4">
+                      <CheckCircle2 className="w-5 h-5 text-violet-400" />
+                    </div>
+                  )}
+
+                  {/* Badges */}
+                  <div className="flex items-center gap-2 mb-4 flex-wrap">
+                    <span className={`${riskBadgeClasses} text-[10px] px-3 py-1 rounded-lg border font-bold uppercase tracking-widest`}>
+                      {riskLabel}
+                    </span>
+                    <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">
+                      Risk: {risk.toFixed(3)}
+                    </span>
+                    <span className="bg-blue-500/10 text-blue-300 text-[10px] px-3 py-1 rounded-lg border border-blue-500/20 font-bold uppercase tracking-widest">
+                      {exp.trend}
+                    </span>
+                  </div>
+
+                  {/* Cluster Name */}
+                  <h3 className="font-bold text-lg text-white mb-2">{displayName}</h3>
+
+                  {/* Recommended Action */}
+                  <p className="text-zinc-500 text-xs leading-relaxed mb-4">
+                    {exp.recommended_action}
+                  </p>
+
+                  {/* Evidence + Confidence */}
+                  <div className="flex items-center gap-4 text-[10px] text-zinc-600 uppercase tracking-widest font-bold mb-5">
+                    <span>{evidenceCount} evidence signals</span>
+                    <span>·</span>
+                    <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
+                  </div>
+
+                  {/* Layer Tags */}
+                  <div className="flex flex-wrap gap-2 mb-6">
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+                  </div>
+
+                  <Link href="/experiment-builder" className={`inline-flex items-center gap-2 ${linkClasses} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
+                    Launch Experiment <span className="text-lg">→</span>
+                  </Link>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

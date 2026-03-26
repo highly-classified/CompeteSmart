@@ -41,6 +41,7 @@ class CopilotChatRequest(BaseModel):
     experiment_text: str
     user_query: str
     chat_history: Optional[List[Dict[str, str]]] = []
+    cluster_id: Optional[str] = None
 
 class CopilotChatResponse(BaseModel):
     response: str
@@ -391,7 +392,8 @@ def copilot_chat(request: CopilotChatRequest):
         response_text = chat_with_experiment(
             experiment_text=request.experiment_text,
             user_query=request.user_query,
-            chat_history=request.chat_history
+            chat_history=request.chat_history,
+            cluster_id=request.cluster_id
         )
         return CopilotChatResponse(response=response_text)
     except Exception as e:
