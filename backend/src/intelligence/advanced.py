@@ -1,7 +1,5 @@
-import numpy as np
 from sqlalchemy.orm import Session
 from src.models import Signal, Cluster, VectorEmbedding
-from sklearn.neighbors import KernelDensity
 from datetime import datetime, timedelta
 
 class AdvancedIntelligenceEngine:
@@ -9,6 +7,9 @@ class AdvancedIntelligenceEngine:
         self.db = db
 
     def detect_whitespace(self, bandwidth: float = 0.5, num_candidates: int = 5) -> list[dict]:
+        import numpy as np
+        from sklearn.neighbors import KernelDensity
+        
         clusters = self.db.query(Cluster).all()
         if not clusters or len(clusters) < 5:
             return []
@@ -50,6 +51,7 @@ class AdvancedIntelligenceEngine:
         return results
 
     def detect_persona_drift(self, competitor_id: str, days_window: int = 30) -> dict:
+        import numpy as np
         now = datetime.utcnow()
         t_current_start = now - timedelta(days=days_window)
         t_prev_start = t_current_start - timedelta(days=days_window)

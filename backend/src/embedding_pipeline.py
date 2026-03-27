@@ -1,7 +1,6 @@
 import os
 import psycopg2
 from psycopg2.extras import DictCursor, execute_batch
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -16,6 +15,7 @@ def get_model():
     global _model
     if _model is None:
         print(f"Loading embedding model '{MODEL_NAME}'...")
+        from sentence_transformers import SentenceTransformer
         _model = SentenceTransformer(MODEL_NAME)
     return _model
 

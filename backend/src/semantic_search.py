@@ -1,7 +1,6 @@
 import os
 import psycopg2
 from psycopg2.extras import DictCursor
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -18,6 +17,7 @@ def get_model():
     """
     global _model
     if _model is None:
+        from sentence_transformers import SentenceTransformer
         _model = SentenceTransformer(MODEL_NAME)
         # Warmup (reduces first-call latency)
         _model.encode("warmup")

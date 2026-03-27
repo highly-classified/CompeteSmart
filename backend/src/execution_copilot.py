@@ -1,18 +1,10 @@
 import os
-import google.generativeai as genai
 from typing import List, Dict, Optional
 from src.semantic_search import semantic_search
 from src.trust_layer import compute_trust_score
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# Configure Gemini
-api_key = os.environ.get("GEMINI_API_KEY")
-if api_key:
-    genai.configure(api_key=api_key)
-else:
-    print("Warning: GEMINI_API_KEY not found in environment.")
 
 def chat_with_experiment(experiment_text: str, user_query: str, chat_history: list = None, cluster_id: str = None) -> str:
     """
@@ -76,6 +68,17 @@ OPERATIONAL GUIDELINES:
 
     # 3. Gemini Chat Initialization
     try:
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import google.generativeai as genai
+            
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if api_key:
+            genai.configure(api_key=api_key)
+        else:
+            print("Warning: GEMINI_API_KEY not found in environment.")
+            
         model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Convert history format to Gemini's format
