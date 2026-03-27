@@ -26,6 +26,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("api")
 
+app = FastAPI(title="CompeteSmart Intelligence API")
+
 @app.on_event("startup")
 def startup_db():
     logger.info("Initializing database...")
@@ -40,8 +42,6 @@ def startup_db():
         logger.info("Database initialization complete.")
     except Exception as e:
         logger.error(f"Database initialization warning: {e}")
-
-app = FastAPI(title="CompeteSmart Intelligence API")
 
 # Allow the Next.js frontend to call this API
 origins = [
