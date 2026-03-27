@@ -1,13 +1,8 @@
-import hashlib
+import logging
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
-from src.models import Signal, Cluster, VectorEmbedding
-import uuid
-from datetime import datetime
-from sqlalchemy import cast, String
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+logger = logging.getLogger(__name__)
 
 class ClusteringEngine:
     def __init__(self, db: Session):
@@ -18,16 +13,14 @@ class ClusteringEngine:
         Runs HDBSCAN (with KMeans fallback) over all unclustered signals. 
         """
         from src.models import Signal, VectorEmbedding, Cluster
-        import numpy as np
         import uuid
-        import logging
-
-        logger = logging.getLogger(__name__)
+        
+        logger.info("[Clustering] Starting clustering operation...")
 
         # Step 1: Retrieve unclustered signals
-        # Only process signals that have NOT been assigned to a cluster yet
         unclustered_signals = self.db.query(Signal).filter(Signal.cluster_id == None).all()
         if not unclustered_signals or len(unclustered_signals) < 3:
+            logger.info("[Clustering] Not enough data points to form new clusters (need at least 3).")
             return "Not enough data points to form new clusters (need at least 3)."
 
         # Step 2: Retrieve embeddings for these signals
@@ -44,6 +37,7 @@ class ClusteringEngine:
                 valid_signals.append(s)
                 
         if len(embeddings) < 3:
+            logger.info("[Clustering] Not enough valid embeddings found for clustering.")
             return "Not enough valid embeddings found for clustering."
 
         embeddings_np = np.array(embeddings)
@@ -59,7 +53,6 @@ class ClusteringEngine:
             logger.warning(f"[Clustering] HDBSCAN failed or not installed: {e}. Falling back to KMeans.")
             try:
                 from sklearn.cluster import KMeans
-                # Aim for approx signals/5 clusters, min 2, max 10 for demo purposes
                 n_clusters = max(2, min(10, len(embeddings_np) // 5))
                 kmeans = KMeans(n_clusters=n_clusters, random_state=42)
                 labels = kmeans.fit_predict(embeddings_np)
@@ -102,4 +95,6 @@ class ClusteringEngine:
                 sig.cluster_id = cluster_id
                 
         self.db.commit()
-        return f"Created {len(cluster_map)} new clusters from {len(valid_signals)} signals ({len(noise_signals)} marked as noise)."
+        msg = f"Created {len(cluster_map)} new clusters from {len(valid_signals)} signals ({len(noise_signals)} marked as noise)."
+        logger.info(f"[Clustering] {msg}")
+        return msg

@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, String
 from src.models import Signal, VectorEmbedding
@@ -8,7 +7,16 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 # Model: all-MiniLM-L6-v2 (384 dimensions)
-model = SentenceTransformer('all-MiniLM-L6-v2')
+_model = None
+
+def get_model():
+    global _model
+    if _model is None:
+        logger.info("[EmbeddingGeneration] Loading SentenceTransformer model (all-MiniLM-L6-v2)...")
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info("[EmbeddingGeneration] Model loaded successfully.")
+    return _model
 
 class EmbeddingGenerator:
     def __init__(self, db: Session, batch_size: int = 64):
@@ -41,7 +49,7 @@ class EmbeddingGenerator:
             
             try:
                 # Generate Embeddings for the batch
-                embeddings = model.encode(contents).tolist()
+                embeddings = get_model().encode(contents).tolist()
                 
                 for signal, embedding in zip(batch, embeddings):
                     # Store in vector_embeddings table
@@ -67,7 +75,7 @@ class EmbeddingGenerator:
                 # Fallback to individual processing for this batch if it failed
                 for s in batch:
                     try:
-                        emb = model.encode([s.content.lower().strip()])[0].tolist()
+                        emb = get_model().encode([s.content.lower().strip()])[0].tolist()
                         vec = VectorEmbedding(
                             id=str(s.id),
                             embedding=emb,
