@@ -404,3 +404,11 @@ def copilot_chat(request: CopilotChatRequest):
         return CopilotChatResponse(response=response_text)
     except Exception as e:
         return CopilotChatResponse(response=f"Copilot error: {str(e)}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Render provides the port in the PORT environment variable
+    port = int(os.environ.get("PORT", 8000))
+    # Bind to 0.0.0.0 so the service is accessible externally
+    uvicorn.run("api:app", host="0.0.0.0", port=port)
