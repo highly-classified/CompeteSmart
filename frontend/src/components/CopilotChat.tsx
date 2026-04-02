@@ -10,9 +10,19 @@ interface Message {
   content: string;
 }
 
+interface Experiment {
+  insight: string;
+  cluster_id: string;
+  trend: string;
+  confidence: number;
+  risk: number;
+  recommended_action: string;
+  evidence: string[];
+}
+
 interface CopilotChatProps {
   selectedExperiment?: string;
-  experiments: any[];
+  experiments: Experiment[];
 }
 
 export function CopilotChat({ selectedExperiment: dashboardSelected, experiments }: CopilotChatProps) {
@@ -52,7 +62,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   }, [messages]);
 
   useEffect(() => {
-    if (activeExperiment !== undefined) {
+    if (activeExperiment !== null) {
       localStorage.setItem("copilotActiveExperiment", JSON.stringify(activeExperiment));
     }
   }, [activeExperiment]);
@@ -229,14 +239,14 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                         ) : (
                           <ReactMarkdown
                             components={{
-                              p: ({ node, ...props }) => <p className="mb-3 last:mb-0" {...props} />,
-                              ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-3 space-y-1" {...props} />,
-                              ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-3 space-y-1" {...props} />,
-                              li: ({ node, ...props }) => <li className="" {...props} />,
-                              h1: ({ node, ...props }) => <h1 className="text-sm font-bold mt-4 mb-2 text-white" {...props} />,
-                              h2: ({ node, ...props }) => <h2 className="text-sm font-bold mt-4 mb-2 text-white" {...props} />,
-                              h3: ({ node, ...props }) => <h3 className="text-sm font-bold mt-4 mb-2 text-violet-300" {...props} />,
-                              strong: ({ node, ...props }) => <strong className="font-bold text-violet-200" {...props} />,
+                              p: ({ ...props }) => <p className="mb-3 last:mb-0" { ...props } />,
+                              ul: ({ ...props }) => <ul className="list-disc pl-5 mb-3 space-y-1" { ...props } />,
+                              ol: ({ ...props }) => <ol className="list-decimal pl-5 mb-3 space-y-1" { ...props } />,
+                              li: ({ ...props }) => <li className="" { ...props } />,
+                              h1: ({ ...props }) => <h1 className="text-sm font-bold mt-4 mb-2 text-white" { ...props } />,
+                              h2: ({ ...props }) => <h2 className="text-sm font-bold mt-4 mb-2 text-white" { ...props } />,
+                              h3: ({ ...props }) => <h3 className="text-sm font-bold mt-4 mb-2 text-violet-300" { ...props } />,
+                              strong: ({ ...props }) => <strong className="font-bold text-violet-200" { ...props } />,
                             }}
                           >
                             {msg.content}

@@ -16,7 +16,7 @@ export default function AuthPage() {
 
     if (email === "admin@test.com" && password === "password") {
       localStorage.setItem("token", "dummy_token");
-      router.push("/dashboard");
+      router.push("/setup");
     } else {
       alert("Invalid test credentials. Please use admin@test.com / password");
     }
