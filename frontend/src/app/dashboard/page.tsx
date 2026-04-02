@@ -209,14 +209,14 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
-    fetch("http://localhost:8000/api/summary-insights")
+    fetch("/api/summary-insights")
       .then(res => res.json())
       .then(setSummary)
       .catch(e => console.error("Summary fetch error", e));
   }, []);
 
   useEffect(() => {
-    fetch(`http://localhost:8000/api/competitor-analysis?competitor=${selectedCompetitor}`)
+    fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
       .then((res) => {
         if (!res.ok) throw new Error("API error");
         return res.json();

@@ -14,11 +14,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # Add parent directory to sys.path to import models correctly
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.models import Competitor, Snapshot, ExtractedContent, Cluster, Signal, VectorEmbedding
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 import google.generativeai as genai
 # Initialize Gemini
-genai.configure(api_key="AIzaSyChXw2gbfc7t341rBp6XvJcUlc7g7XvHwo")
-model = genai.GenerativeModel('gemini-2.5-flash')
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model = genai.GenerativeModel('models/gemini-3.1-flash-lite-preview')
 
 def get_competitor(db, name, domain):
     comp = db.query(Competitor).filter(Competitor.name == name).first()
