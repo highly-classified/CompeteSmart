@@ -72,3 +72,13 @@ class VectorEmbedding(Base):
     id = Column(String, primary_key=True)
     embedding = Column(Vector(384))
     metadata_ = Column(JSONB)
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, unique=True, nullable=False)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    company_name = Column(String, nullable=False)
+    website = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

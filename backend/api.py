@@ -67,6 +67,23 @@ class CopilotChatRequest(BaseModel):
 
 class CopilotChatResponse(BaseModel):
     response: str
+
+class UserSetupRequest(BaseModel):
+    name: str
+    email: str
+    company_name: str
+    website: Optional[str] = None
+    competitors: List[str]
+
+class UserProfileResponse(BaseModel):
+    name: str
+    email: str
+    company_name: str
+    website: Optional[str] = None
+
+class SuggestionRequest(BaseModel):
+    company_name: str
+    industry: Optional[str] = None
 @app.get("/api/trends")
 def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """
@@ -419,6 +436,84 @@ def copilot_chat(request: CopilotChatRequest):
         return CopilotChatResponse(response=response_text)
     except Exception as e:
         return CopilotChatResponse(response=f"Copilot error: {str(e)}")
+
+# --- User Setup & Profile Endpoints ---
+
+@app.post("/api/user/setup")
+def setup_user_profile(request: UserSetupRequest, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+    """
+    Saves the user's profile and their designated competitors.
+    """
+    # 1. Save or Update Profile
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
+    if profile:
+        profile.name = request.name
+        profile.email = request.email
+        profile.company_name = request.company_name
+        profile.website = request.website
+    else:
+        profile = models.UserProfile(
+            user_id=user_id,
+            name=request.name,
+            email=request.email,
+            company_name=request.company_name,
+            website=request.website
+        )
+        db.add(profile)
+    
+    # 2. Save Competitors
+    # Mapping: admin_test_user -> client_id 1
+    client_id = 1 if user_id == "admin_test_user" else 0
+    
+    for comp_name in request.competitors:
+        # Check if already exists for this client
+        exists = db.query(models.Competitor).filter(
+            models.Competitor.name == comp_name,
+            models.Competitor.client_id == client_id
+        ).first()
+        
+        if not exists:
+            new_comp = models.Competitor(name=comp_name, domain="", client_id=client_id)
+            db.add(new_comp)
+    
+    db.commit()
+    return {"status": "success", "message": "Profile and competitors saved successfully!"}
+
+@app.get("/api/user/profile", response_model=UserProfileResponse)
+def get_user_profile(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
+    """Retrieves the current user's profile."""
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
+    if not profile:
+        # Return default if not found (or 404)
+        return {"name": "", "email": "", "company_name": ""}
+    return profile
+
+@app.get("/api/competitors/suggestions")
+def get_competitor_suggestions(company_name: str, industry: Optional[str] = None):
+    """
+    Uses Gemini to suggest competitors based on company name and industry.
+    """
+    try:
+        import google.generativeai as genai
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return ["Competitor A", "Competitor B", "Competitor C"] # Fallback
+            
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        prompt = f"Suggest 5 direct competitors for a company named '{company_name}'"
+        if industry:
+            prompt += f" in the {industry} industry."
+        prompt += " Provide ONLY the names of the competitors as a comma-separated list."
+        
+        response = model.generate_content(prompt)
+        # Clean response and convert to list
+        names = [n.strip() for n in response.text.split(",") if n.strip()]
+        return names[:5]
+    except Exception as e:
+        logger.error(f"Error getting suggestions: {e}")
+        return ["Competitor X", "Competitor Y", "Competitor Z"]
 
 
 if __name__ == "__main__":

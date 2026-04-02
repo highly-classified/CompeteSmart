@@ -6,10 +6,7 @@ load_dotenv()
 engine = create_engine(os.getenv("DATABASE_URL"))
 insp = inspect(engine)
 
-for table in ["competitors", "snapshots", "extracted_content"]:
+for table in insp.get_table_names():
     print(f"Table: {table}")
-    try:
-        for col in insp.get_columns(table):
-            print(f"  {col['name']}: {col['type']}")
-    except Exception as e:
-        print(f"  Error reading table: {e}")
+    for col in insp.get_columns(table):
+        print(f"  {col['name']}: {col['type']}")
