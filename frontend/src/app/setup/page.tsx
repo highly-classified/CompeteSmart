@@ -14,7 +14,9 @@ import {
   ShieldCheck,
   CheckCircle2,
   Loader2,
-  Globe
+  Globe,
+  MapPin,
+  ChevronDown
 } from "lucide-react";
 
 export default function SetupPage() {
@@ -24,7 +26,9 @@ export default function SetupPage() {
     email: "admin@test.com",
     company_name: "",
     website: "",
-    industry: ""
+    industry: "",
+    location: "",
+    business_type: "saas"
   });
   const [competitors, setCompetitors] = useState<string[]>([]);
   const [currentCompetitor, setCurrentCompetitor] = useState("");
@@ -34,9 +38,15 @@ export default function SetupPage() {
 
   const addCompetitor = (name: string) => {
     const trimmed = name.trim();
-    if (!trimmed || competitors.some(c => c.toLowerCase() === trimmed.toLowerCase())) return;
+    if (!trimmed || competitors.length >= 3 || competitors.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
+      if (competitors.length >= 3 && trimmed) {
+        setFeedback({ type: "error", message: "Maximum 3 competitors allowed." });
+      }
+      return;
+    }
     setCompetitors([...competitors, trimmed]);
     setCurrentCompetitor("");
+    setFeedback(null);
   };
 
   const removeCompetitor = (name: string) => {
@@ -50,7 +60,13 @@ export default function SetupPage() {
     }
     setIsSuggesting(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/competitors/suggestions?company_name=${encodeURIComponent(formData.company_name)}&industry=${encodeURIComponent(formData.industry)}`);
+      const url = new URL("http://localhost:8000/api/competitors/suggestions");
+      url.searchParams.append("company_name", formData.company_name);
+      if (formData.industry) url.searchParams.append("industry", formData.industry);
+      if (formData.location) url.searchParams.append("location", formData.location);
+      url.searchParams.append("business_type", formData.business_type);
+
+      const response = await fetch(url.toString());
       const suggestions = await response.json();
       if (Array.isArray(suggestions)) {
         // Filter out suggestions already in the list
@@ -181,6 +197,31 @@ export default function SetupPage() {
                     className="w-full bg-background/50 border border-foreground/10 rounded-2xl py-4 pl-12 pr-4 text-sm focus:border-emerald-400/50 outline-none transition-all placeholder:text-foreground/20 focus:ring-1 focus:ring-emerald-400/20"
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="relative group">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30 group-focus-within:text-red-400 transition-colors" />
+                    <input
+                      type="text"
+                      placeholder="Location (City/Country)"
+                      value={formData.location}
+                      onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                      className="w-full bg-background/50 border border-foreground/10 rounded-2xl py-4 pl-12 pr-4 text-xs focus:border-red-400/50 outline-none transition-all placeholder:text-foreground/20"
+                    />
+                  </div>
+                  <div className="relative group">
+                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground/30 pointer-events-none group-focus-within:text-blue-400 transition-colors" />
+                    <select
+                      value={formData.business_type}
+                      onChange={(e) => setFormData({ ...formData, business_type: e.target.value })}
+                      className="w-full bg-background/50 border border-foreground/10 rounded-2xl py-4 pl-12 pr-8 text-xs focus:border-blue-400/50 outline-none transition-all appearance-none cursor-pointer"
+                    >
+                      <option value="saas">SaaS / Global</option>
+                      <option value="local">Local / Area-based</option>
+                    </select>
+                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/20 pointer-events-none" />
+                  </div>
+                </div>
               </div>
             </form>
           </div>
@@ -198,7 +239,7 @@ export default function SetupPage() {
                 </div>
                 <button 
                   onClick={getAiSuggestions}
-                  disabled={isSuggesting}
+                  disabled={isSuggesting || competitors.length >= 3}
                   className="flex items-center gap-2 px-4 py-2 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 rounded-full transition-all group/ai disabled:opacity-50 active:scale-95"
                 >
                   {isSuggesting ? (
@@ -215,16 +256,18 @@ export default function SetupPage() {
                    <Plus className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/20" />
                   <input
                     type="text"
-                    placeholder="Add competitor name..."
+                    placeholder={competitors.length >= 3 ? "Limit reached (3)" : "Add competitor name..."}
                     value={currentCompetitor}
+                    disabled={competitors.length >= 3}
                     onChange={(e) => setCurrentCompetitor(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && addCompetitor(currentCompetitor)}
-                    className="w-full bg-background/50 border border-foreground/10 rounded-xl py-3 pl-10 pr-4 text-xs focus:border-foreground/30 outline-none transition-all placeholder:text-foreground/20"
+                    className="w-full bg-background/50 border border-foreground/10 rounded-xl py-3 pl-10 pr-4 text-xs focus:border-foreground/30 outline-none transition-all placeholder:text-foreground/20 disabled:opacity-50 italic"
                   />
                 </div>
                 <button 
                   onClick={() => addCompetitor(currentCompetitor)}
-                  className="px-4 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 rounded-xl transition-all active:scale-95"
+                  disabled={competitors.length >= 3}
+                  className="px-4 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 rounded-xl transition-all active:scale-95 disabled:opacity-50"
                 >
                   <Plus className="w-4 h-4 text-foreground/60" />
                 </button>

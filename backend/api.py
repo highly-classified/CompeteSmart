@@ -11,7 +11,19 @@ from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult,
 from src.auth import get_current_user
 from typing import List, Dict, Optional
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import os
+import json
+import logging
+import sys
+import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
+from src.execution_copilot import chat_with_experiment
 
 SUMMARY_CACHE = {
     "data": None,
@@ -334,79 +346,6 @@ def trigger_cache_refresh(db: Session = Depends(get_db)):
     """Force rebuild the entire dashboard cache"""
     refresh_dashboard_cache(db)
     return {"status": "success", "message": "Dashboard cache rebuilt"}
-    FROM normalized;
-    """
-    white_res = db.execute(text(white_query), params).fetchall()
-    
-    whitespace = []
-    for row in white_res:
-         # Map quadrant zones via mock logic temporarily if derived
-         x_val = float(row[1])
-         y_val = float(row[2])
-         if y_val > 50 and x_val < 50:
-             quadrant = "BEST opportunity"
-         elif y_val > 50 and x_val >= 50:
-             quadrant = "Crowded"
-         elif y_val <= 50 and x_val < 50:
-             quadrant = "Weak"
-         else:
-             quadrant = "Avoid"
-
-         whitespace.append({
-             "competitor": row[0],
-             "x": round(x_val, 2),
-             "y": round(y_val, 2),
-             "quadrant": quadrant
-         })
-
-    # Competitor Strength
-    strength_query = f"""
-    WITH base AS (
-        SELECT
-            c.name AS competitor,
-            COUNT(ec.id) AS total_activity
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    max_val AS (
-        SELECT MAX(total_activity) AS max_total FROM base
-    )
-    SELECT
-        b.competitor,
-        ROUND((b.total_activity * 10.0 / m.max_total), 2) AS activity_score
-    FROM base b, max_val m;
-    """
-    strength_res = db.execute(text(strength_query), params).fetchall()
-    
-    mock_dims = {
-        "Urban Company": {"price": 6, "quality": 9, "convenience": 8, "ai": 9},
-        "Housejoy": {"price": 8, "quality": 6, "convenience": 7, "ai": 4},
-        "Sulekha": {"price": 9, "quality": 5, "convenience": 6, "ai": 3}
-    }
-    
-    strength = []
-    for row in strength_res:
-        comp_name = row[0]
-        dims = mock_dims.get(comp_name, {"price": 5, "quality": 5, "convenience": 5, "ai": 5})
-        strength.append({
-            "competitor": comp_name,
-            "pricing": dims["price"],
-            "quality": dims["quality"],
-            "convenience": dims["convenience"],
-            "ai": dims["ai"],
-            "activity_score": float(row[1])
-        })
-
-    return {
-        "trend": trends,
-        "themes": themes,
-        "positioning": positioning,
-        "whitespace": whitespace,
-        "strength": strength
-    }
 
 @app.get("/api/charts/opportunity")
 def get_chart_opportunity(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -599,9 +538,16 @@ def get_user_profile(db: Session = Depends(get_db), user_id: str = Depends(get_c
     return profile
 
 @app.get("/api/competitors/suggestions")
-def get_competitor_suggestions(company_name: str, industry: Optional[str] = None):
+def get_competitor_suggestions(
+    company_name: str, 
+    industry: Optional[str] = None, 
+    location: Optional[str] = None, 
+    business_type: Optional[str] = "saas"
+):
     """
-    Uses Gemini to suggest competitors based on company name and industry.
+    Uses Gemini to suggest a strategic mix of 3 competitors: 
+    1 Industry Leader + 2 Direct Peer-Level Companies.
+    Considers 'location' for local businesses and 'saas' priority for global products.
     """
     try:
         import google.generativeai as genai
@@ -610,20 +556,71 @@ def get_competitor_suggestions(company_name: str, industry: Optional[str] = None
             return ["Competitor A", "Competitor B", "Competitor C"] # Fallback
             
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        prompt = f"Suggest 5 direct competitors for a company named '{company_name}'"
-        if industry:
-            prompt += f" in the {industry} industry."
-        prompt += " Provide ONLY the names of the competitors as a comma-separated list."
+        # Model ladder to handle quota limits: 3.1 Pro first, then 3.1 Flash-Lite
+        model_names = ['models/gemini-3.1-pro-preview', 'models/gemini-3.1-flash-lite-preview']
+        response = None
+        last_error = None
         
-        response = model.generate_content(prompt)
-        # Clean response and convert to list
-        names = [n.strip() for n in response.text.split(",") if n.strip()]
-        return names[:5]
+        for m_name in model_names:
+            try:
+                model = genai.GenerativeModel(m_name)
+                # Build a sophisticated prompt
+                context = f"Company: '{company_name}'"
+                if industry: context += f", Industry: '{industry}'"
+                if location: context += f", Location: '{location}'"
+                
+                prompt = f"""
+                Analyze the company: {context}.
+                Business Model Focus: {business_type.upper()}.
+
+                TASK: Suggest exactly 3 direct competitors.
+                
+                CRITICAL RULES:
+                1. If '{company_name}' is a Startup, provide:
+                   - 1 Top Industry Leader (giant rival).
+                   - 2 Strategic Peers (same level startups/rivals).
+                2. If model is 'LOCAL', prioritize competitors in '{location or 'their area'}'.
+                3. If model is 'SAAS', prioritize global rivals.
+                4. Focus on direct rivals fighting for the same customers.
+                5. OUTPUT FORMAT: Provide ONLY the names in a single line, separated by commas. 
+                   Example: Google, Microsoft, Amazon
+                   NO intro, NO descriptions, NO numbering, NO bolding.
+                """
+                
+                response = model.generate_content(prompt)
+                if response and response.text:
+                    break # Success!
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Model {m_name} failed: {e}")
+                continue
+                
+        if not response:
+            logger.error(f"All Gemini models failed. Last error: {last_error}")
+            return ["Competitor Look-up Failed", "Checking Connection...", "Try Manual Entry"]
+
+        text_response = response.text.strip()
+        
+        # Clean response: Handle common AI prefixes
+        if ":" in text_response and len(text_response.split(":")[0]) < 40:
+            text_response = text_response.split(":", 1)[1].strip()
+            
+        # Convert to list and clean each name (strip markdown asterisks, numbers, etc.)
+        import re
+        names = []
+        for n in text_response.split(","):
+            # Regex to strip leading numbers, dots, dashes, and whitespace
+            clean_name = re.sub(r'^[\d\.\-\s\*]+', '', n.strip())
+            # Strip trailing markdown artifacts
+            clean_name = clean_name.strip(" *#_")
+            if clean_name:
+                names.append(clean_name)
+        
+        return names[:3]
     except Exception as e:
-        logger.error(f"Error getting suggestions: {e}")
-        return ["Competitor X", "Competitor Y", "Competitor Z"]
+        logger.error(f"Critical error in AI suggestions: {e}")
+        return ["AI Processing Error", "Please try again later", "Check API Quota"]
 
 
 if __name__ == "__main__":
