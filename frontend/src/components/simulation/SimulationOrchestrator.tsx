@@ -1,17 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LiveKpiPanel } from "./LiveKpiPanel";
 import { TrajectoryChart } from "./TrajectoryChart";
-import { Play, RotateCcw, Save, ShieldAlert, Sparkles, X, CheckCircle2 } from "lucide-react";
+import { Play, RotateCcw, Save, ShieldAlert, Sparkles, X, CheckCircle2, Trophy, Loader2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
+
+interface StageEntry {
+    id: number;
+    title: string;
+    desc: string;
+    status: "RUNNING" | "SUCCESS" | "FAILURE";
+}
 
 export interface SavedExperiment {
     id: string;
     name: string;
-    savedAt: string; // ISO string
+    savedAt: string;
     stageIndex: number;
     chartData: { month: string; differentiation: number; saturation: number }[];
     kpis: { label: string; value: number; suffix: string }[];
@@ -31,30 +38,6 @@ function saveExperiment(exp: SavedExperiment) {
     list.unshift(exp);
     localStorage.setItem(LS_KEY, JSON.stringify(list));
 }
-
-// ─── Stage / Data Config ─────────────────────────────────────────────────────
-
-const STAGES = [
-    { id: 0, title: "Ready for Simulation", desc: "Select a generated hypothesis strategy to begin testing against live competitor models.", duration: 0 },
-    { id: 1, title: "Experiment Applied", desc: "Deploying new messaging. Initial customer segment resonance increasing rapidly.", duration: 3500 },
-    { id: 2, title: "Market Reaction", desc: "Mainstream ad exposure finalized. Aggressive whitespace gap formally established.", duration: 3500 },
-    { id: 3, title: "Competitor Response", desc: "Warning: Fast-following competitors detected the narrative shift and are cloning the verbiage.", duration: 4000 },
-    { id: 4, title: "Outcome Evolution", desc: "Market stabilizes. Initial advantages fully analyzed against long-term saturation.", duration: 4000 }
-];
-
-const RAW_TRAJECTORY = [
-    { month: "Jan", differentiation: 20, saturation: 80 },
-    { month: "Feb", differentiation: 35, saturation: 78 },
-    { month: "Mar", differentiation: 60, saturation: 72 },
-    { month: "Apr", differentiation: 75, saturation: 65 },
-    { month: "May", differentiation: 82, saturation: 60 },
-    { month: "Jun", differentiation: 78, saturation: 64 },
-    { month: "Jul", differentiation: 70, saturation: 75 },
-    { month: "Aug", differentiation: 65, saturation: 78 },
-    { month: "Sep", differentiation: 62, saturation: 80 }
-];
-
-const VERDICT_TEXT = "The aggressive differentiation strategy successfully dominated the whitespace initially. However, due to low persona drift complexity, competitors cloned the narrative offset within 6 months, returning market saturation back to baseline 80% with lost margin.";
 
 // ─── Save Name Modal ──────────────────────────────────────────────────────────
 
@@ -109,51 +92,125 @@ function SaveModal({ onSave, onClose }: { onSave: (name: string) => void; onClos
 
 // ─── Main Orchestrator ────────────────────────────────────────────────────────
 
+const WS_BASE = process.env.NEXT_PUBLIC_BACKEND_URL?.replace("http", "ws") || "ws://localhost:8000";
+
 export function SimulationOrchestrator() {
-    const [isRunning, setIsRunning] = useState(false);
-    const [stageIndex, setStageIndex] = useState(0);
-    const [chartData, setChartData] = useState<any[]>([]);
-    const [dataIndex, setDataIndex] = useState(0);
+    const defaultKpis = { differentiation: 20, saturation: 80, persona_drift: 0, resonance: 1.0 };
+
+    const [status, setStatus] = useState<"IDLE" | "RUNNING" | "SUCCESS" | "FAILURE">("IDLE");
+    const [stages, setStages] = useState<StageEntry[]>([]);
+    const [chartData, setChartData] = useState<{ month: string; differentiation: number; saturation: number }[]>([]);
+    const [rawKpis, setRawKpis] = useState(defaultKpis);
+    const [verdictText, setVerdictText] = useState("");
+    const [iteration, setIteration] = useState(0);
+    const [maxIterations, setMaxIterations] = useState(8);
+
     const [showSaveModal, setShowSaveModal] = useState(false);
     const [savedToast, setSavedToast] = useState(false);
 
-    const kpis = [
-        { label: "Whitespace Map", suffix: "%", value: stageIndex === 0 ? 20 : stageIndex === 1 ? 60 : stageIndex === 2 ? 82 : stageIndex === 3 ? 70 : 62, previousValue: 20 },
-        { label: "Saturation Score", suffix: "%", value: stageIndex === 0 ? 80 : stageIndex === 1 ? 72 : stageIndex === 2 ? 60 : stageIndex === 3 ? 75 : 80, previousValue: 80, inverseGood: true },
-        { label: "Persona Drift", suffix: "px", value: stageIndex === 0 ? 0 : stageIndex >= 1 ? 145 : 0, previousValue: 0 },
-        { label: "Signal Resonance", suffix: "x", value: stageIndex === 0 ? 1.0 : stageIndex === 1 ? 1.5 : stageIndex === 2 ? 2.3 : stageIndex === 3 ? 1.8 : 1.6, previousValue: 1.0 }
+    const wsRef = useRef<WebSocket | null>(null);
+    const logRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll the log panel to the bottom when new stages arrive
+    useEffect(() => {
+        if (logRef.current) {
+            logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
+    }, [stages]);
+
+    const formattedKpis = [
+        { label: "Whitespace Map", suffix: "%", value: rawKpis.differentiation, previousValue: 20 },
+        { label: "Saturation Score", suffix: "%", value: rawKpis.saturation, previousValue: 80, inverseGood: true },
+        { label: "Persona Drift", suffix: "px", value: rawKpis.persona_drift, previousValue: 0 },
+        { label: "Signal Resonance", suffix: "x", value: rawKpis.resonance, previousValue: 1.0 }
     ];
 
-    useEffect(() => {
-        if (!isRunning || stageIndex >= STAGES.length - 1) return;
-        const timer = setTimeout(() => setStageIndex(prev => prev + 1), STAGES[stageIndex + 1].duration);
-        return () => clearTimeout(timer);
-    }, [isRunning, stageIndex]);
+    const startSimulation = () => {
+        // Reset state
+        setStatus("RUNNING");
+        setStages([]);
+        setChartData([]);
+        setRawKpis(defaultKpis);
+        setVerdictText("");
+        setIteration(0);
 
-    useEffect(() => {
-        if (!isRunning || dataIndex >= RAW_TRAJECTORY.length) return;
-        const totalSimTime = STAGES.slice(1).reduce((acc, s) => acc + s.duration, 0);
-        const msPerPoint = totalSimTime / RAW_TRAJECTORY.length;
-        const timer = setTimeout(() => {
-            setChartData(prev => [...prev, RAW_TRAJECTORY[dataIndex]]);
-            setDataIndex(prev => prev + 1);
-        }, msPerPoint);
-        return () => clearTimeout(timer);
-    }, [isRunning, dataIndex]);
+        const ws = new WebSocket(`${WS_BASE}/ws/simulate`);
+        wsRef.current = ws;
 
-    const startSimulation = () => { setIsRunning(true); setStageIndex(1); setChartData([RAW_TRAJECTORY[0]]); setDataIndex(1); };
-    const resetSimulation = () => { setIsRunning(false); setStageIndex(0); setChartData([]); setDataIndex(0); };
+        ws.onopen = () => {
+            console.log("Simulation WS connected");
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.iteration !== undefined) setIteration(data.iteration);
+                if (data.maxIterations !== undefined) setMaxIterations(data.maxIterations);
+
+                if (data.stageData) {
+                    const entry: StageEntry = { ...data.stageData, status: data.status };
+                    setStages(prev => [...prev, entry]);
+                }
+                if (data.chartPoint) {
+                    setChartData(prev => [...prev, data.chartPoint]);
+                }
+                if (data.kpis) {
+                    setRawKpis(data.kpis);
+                }
+
+                // Final status
+                if (data.status === "SUCCESS" || data.status === "FAILURE") {
+                    setStatus(data.status);
+                    setVerdictText(data.stageData?.desc || "Simulation complete.");
+                    ws.close();
+                    wsRef.current = null;
+                }
+            } catch (e) {
+                console.error("Failed to parse WS message", e);
+            }
+        };
+
+        ws.onerror = () => {
+            setStatus("FAILURE");
+            setVerdictText("Connection error: Unable to reach Simulation Engine. Please ensure the backend server is running.");
+            wsRef.current = null;
+        };
+
+        ws.onclose = () => {
+            // If status is still running when ws closes unexpectedly, mark error
+            setStatus(prev => prev === "RUNNING" ? "FAILURE" : prev);
+            if (wsRef.current) {
+                setVerdictText("WebSocket connection was lost unexpectedly.");
+            }
+            wsRef.current = null;
+        };
+    };
+
+    const resetSimulation = () => {
+        // Close any lingering connection
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+        setStatus("IDLE");
+        setStages([]);
+        setChartData([]);
+        setRawKpis(defaultKpis);
+        setVerdictText("");
+        setIteration(0);
+    };
 
     const handleSave = (name: string) => {
         const exp: SavedExperiment = {
             id: `EX_${Date.now()}`,
             name,
             savedAt: new Date().toISOString(),
-            stageIndex,
-            chartData: chartData.length ? chartData : RAW_TRAJECTORY,
-            kpis: kpis.map(k => ({ label: k.label, value: k.value, suffix: k.suffix })),
-            verdict: "failure",
-            verdictText: VERDICT_TEXT,
+            stageIndex: stages.length,
+            chartData,
+            kpis: formattedKpis.map(k => ({ label: k.label, value: k.value, suffix: k.suffix })),
+            verdict: status === "SUCCESS" ? "success" : "failure",
+            verdictText,
         };
         saveExperiment(exp);
         setShowSaveModal(false);
@@ -161,8 +218,8 @@ export function SimulationOrchestrator() {
         setTimeout(() => setSavedToast(false), 3000);
     };
 
-    const currentStage = STAGES[stageIndex];
-    const isFinished = stageIndex === STAGES.length - 1;
+    const isFinished = status === "SUCCESS" || status === "FAILURE";
+    const progressPercent = maxIterations > 0 ? Math.round((iteration / maxIterations) * 100) : 0;
 
     return (
         <div className="max-w-7xl mx-auto p-6 text-zinc-100 min-h-screen">
@@ -193,11 +250,17 @@ export function SimulationOrchestrator() {
                     <p className="text-zinc-400 mt-2 text-lg">Simulate and project strategic pivots against your competitors.</p>
                 </div>
 
-                <div className="flex gap-4">
-                    {!isRunning && stageIndex === 0 && (
+                <div className="flex gap-4 items-center">
+                    {status === "IDLE" && (
                         <button onClick={startSimulation} className="flex items-center gap-2 px-8 py-3 bg-emerald-500 hover:bg-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.3)] text-white rounded-xl font-bold transition-all hover:scale-105 active:scale-95">
                             <Play className="fill-current w-5 h-5" /> Execute Simulation
                         </button>
+                    )}
+                    {status === "RUNNING" && (
+                        <div className="flex items-center gap-3 px-6 py-3 border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 rounded-xl font-bold">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Iteration {iteration} / {maxIterations}
+                        </div>
                     )}
                     {isFinished && (
                         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex gap-4">
@@ -215,50 +278,101 @@ export function SimulationOrchestrator() {
                 </div>
             </div>
 
-            <LiveKpiPanel metrics={kpis} />
+            {/* Progress Bar (only visible during running) */}
+            {status === "RUNNING" && (
+                <div className="mb-6">
+                    <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
+                        <motion.div
+                            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full"
+                            initial={{ width: 0 }}
+                            animate={{ width: `${progressPercent}%` }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                        />
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1.5 text-right">{progressPercent}% complete</p>
+                </div>
+            )}
+
+            <LiveKpiPanel metrics={formattedKpis} />
 
             <div className="grid lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                    <TrajectoryChart data={chartData.length ? chartData : [{ month: "Jan", differentiation: 20, saturation: 80 }]} />
+                    <TrajectoryChart data={chartData.length > 0 ? chartData : [{ month: "—", differentiation: 20, saturation: 80 }]} />
                 </div>
 
                 <div className="space-y-6">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-[450px] flex flex-col justify-between shadow-xl relative overflow-hidden">
-                        <div>
-                            <div className="flex items-center gap-3 mb-8">
-                                <div className="relative flex h-3 w-3">
-                                    {isRunning && stageIndex < STAGES.length - 1 && (
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    )}
-                                    <span className={`relative inline-flex rounded-full h-3 w-3 ${stageIndex > 0 ? 'bg-emerald-500' : 'bg-zinc-700'}`}></span>
-                                </div>
-                                <h3 className="text-sm uppercase tracking-widest font-semibold text-zinc-400">Sequence Log</h3>
+                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-[450px] flex flex-col shadow-xl relative overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-4 flex-shrink-0">
+                            <div className="relative flex h-3 w-3">
+                                {status === "RUNNING" && (
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                )}
+                                <span className={`relative inline-flex rounded-full h-3 w-3 ${
+                                    status === "SUCCESS" ? "bg-emerald-500" :
+                                    status === "FAILURE" ? "bg-rose-500" :
+                                    status === "RUNNING" ? "bg-emerald-500" : "bg-zinc-700"
+                                }`}></span>
                             </div>
-
-                            <AnimatePresence mode="wait">
-                                <motion.div
-                                    key={currentStage.id}
-                                    initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: -15 }} transition={{ duration: 0.4 }}
-                                >
-                                    <h4 className="text-2xl font-bold text-white mb-3">{currentStage.title}</h4>
-                                    <p className="text-zinc-400 text-lg leading-relaxed">{currentStage.desc}</p>
-                                </motion.div>
-                            </AnimatePresence>
+                            <h3 className="text-sm uppercase tracking-widest font-semibold text-zinc-400">Live Agent Log</h3>
+                            {stages.length > 0 && (
+                                <span className="ml-auto text-xs text-zinc-600 font-mono">{stages.length} events</span>
+                            )}
                         </div>
 
+                        {/* Scrollable Log */}
+                        <div ref={logRef} className="flex-1 overflow-y-auto space-y-3 pr-1 scrollbar-thin scrollbar-track-zinc-900 scrollbar-thumb-zinc-700">
+                            {stages.length === 0 && status === "IDLE" && (
+                                <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
+                                    Click &quot;Execute Simulation&quot; to start the agentic engine.
+                                </div>
+                            )}
+
+                            <AnimatePresence initial={false}>
+                                {stages.map((stage) => {
+                                    const isSuccess = stage.title.includes("✓") || stage.status === "SUCCESS";
+                                    const isFail = stage.title.includes("✗") || stage.status === "FAILURE";
+                                    const borderColor = isSuccess ? "border-emerald-500/30" : isFail ? "border-rose-500/30" : "border-zinc-700/50";
+                                    const accentColor = isSuccess ? "text-emerald-400" : isFail ? "text-rose-400" : "text-zinc-300";
+
+                                    return (
+                                        <motion.div
+                                            key={stage.id}
+                                            initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            transition={{ duration: 0.4 }}
+                                            className={`border ${borderColor} rounded-xl p-4 bg-zinc-950/50`}
+                                        >
+                                            <h4 className={`text-sm font-bold ${accentColor} mb-1.5`}>{stage.title}</h4>
+                                            <p className="text-xs text-zinc-400 leading-relaxed">{stage.desc}</p>
+                                        </motion.div>
+                                    );
+                                })}
+                            </AnimatePresence>
+
+                            {status === "RUNNING" && stages.length > 0 && (
+                                <div className="flex items-center gap-2 text-emerald-500/60 text-xs py-2">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Processing next strategy...
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Verdict Banner */}
                         <AnimatePresence>
                             {isFinished && (
                                 <motion.div
-                                    initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5 }}
-                                    className="bg-zinc-950/50 border border-rose-500/20 rounded-xl p-5 mt-4 relative overflow-hidden"
+                                    initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.3 }}
+                                    className={`flex-shrink-0 border rounded-xl p-4 mt-3 relative overflow-hidden
+                                        ${status === "SUCCESS" ? "border-emerald-500/30 bg-emerald-500/5" : "border-rose-500/30 bg-rose-500/5"}
+                                    `}
                                 >
-                                    <div className="absolute top-0 left-0 w-1 h-full bg-rose-500" />
-                                    <div className="flex items-center gap-2 mb-3 text-rose-400">
-                                        <ShieldAlert className="w-5 h-5" />
-                                        <h5 className="font-bold text-lg">Failure Projection</h5>
+                                    <div className={`absolute top-0 left-0 w-1 h-full ${status === "SUCCESS" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                                    <div className={`flex items-center gap-2 mb-2 ${status === "SUCCESS" ? "text-emerald-400" : "text-rose-400"}`}>
+                                        {status === "SUCCESS" ? <Trophy className="w-4 h-4" /> : <ShieldAlert className="w-4 h-4" />}
+                                        <h5 className="font-bold text-sm">{status === "SUCCESS" ? "Simulation Success" : "Failure Projection"}</h5>
                                     </div>
-                                    <p className="text-sm text-zinc-300 leading-relaxed font-medium">{VERDICT_TEXT}</p>
+                                    <p className="text-xs text-zinc-300 leading-relaxed">{verdictText}</p>
                                 </motion.div>
                             )}
                         </AnimatePresence>

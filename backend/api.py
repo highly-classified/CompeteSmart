@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
@@ -16,6 +16,8 @@ import os
 import json
 import logging
 import sys
+import asyncio
+import random
 from src.execution_copilot import chat_with_experiment
 
 # Configure logging to see progress in Render dashboard
@@ -47,12 +49,16 @@ def startup_db():
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "https://compete-smart.vercel.app"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -769,6 +775,175 @@ def get_competitor_suggestions(company_name: str, industry: Optional[str] = None
         logger.error(f"Error getting suggestions: {e}")
         return ["Competitor X", "Competitor Y", "Competitor Z"]
 
+
+@app.websocket("/ws/simulate")
+async def simulate_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    max_iterations = 8
+    diff = 20.0        # Differentiation score (higher = better)
+    sat = 80.0         # Saturation score (lower = better)
+    momentum = 0.0     # Accumulated strategic momentum
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    
+    # ── Rich Strategy Archetypes ──
+    strategies = [
+        {"name": "Premium Feature Bundle", "diff_boost": (18, 35), "sat_reduce": (8, 18), "risk": 0.45,
+         "success_text": "Premium feature rollout resonated with high-value segments. Competitors cannot replicate proprietary tech stack within this cycle.",
+         "fail_text": "Premium positioning backfired — target audience perceives insufficient value delta. Market perception unchanged."},
+        {"name": "Aggressive Pricing Undercut", "diff_boost": (10, 20), "sat_reduce": (12, 25), "risk": 0.55,
+         "success_text": "Price disruption forced competitors into margin pressure. Market share shifting as budget-conscious users migrate.",
+         "fail_text": "Price war triggered — competitors matched our pricing within 48 hours. Saturation intensified across all segments."},
+        {"name": "Whitespace Niche Targeting", "diff_boost": (20, 40), "sat_reduce": (5, 15), "risk": 0.50,
+         "success_text": "Identified and captured underserved micro-segment. Zero direct competition in this vertical for the foreseeable future.",
+         "fail_text": "Niche proved too small for sustainable growth. Customer acquisition cost exceeds lifetime value projections."},
+        {"name": "AI-Driven Personalization", "diff_boost": (15, 30), "sat_reduce": (10, 20), "risk": 0.40,
+         "success_text": "AI personalization engine deployed. User engagement up 340%. Competitors lack the data infrastructure to replicate.",
+         "fail_text": "Personalization model underfitting — insufficient training data. Users report irrelevant recommendations."},
+        {"name": "Community-Led Growth", "diff_boost": (12, 25), "sat_reduce": (8, 16), "risk": 0.48,
+         "success_text": "Organic community flywheel activated. User-generated content now drives 60% of new acquisition. Defensible moat established.",
+         "fail_text": "Community engagement stalled. Users prefer competitors' established ecosystems. Network effects working against us."},
+        {"name": "Strategic Partnership Play", "diff_boost": (15, 28), "sat_reduce": (10, 22), "risk": 0.42,
+         "success_text": "Partnership secured exclusive distribution channel. Competitor access blocked for 18-month exclusivity window.",
+         "fail_text": "Partnership negotiations collapsed. Competitor secured the deal instead, strengthening their market position."},
+        {"name": "Rapid Feature Innovation", "diff_boost": (18, 32), "sat_reduce": (6, 14), "risk": 0.52,
+         "success_text": "Feature velocity outpaced all competitors 3:1. Market perception shifted to innovation leader positioning.",
+         "fail_text": "Feature bloat detected. Core product quality degraded. User churn increased due to complexity overload."},
+        {"name": "Brand Narrative Overhaul", "diff_boost": (14, 26), "sat_reduce": (10, 20), "risk": 0.46,
+         "success_text": "New brand narrative achieved viral resonance. Share-of-voice increased 280%. Competitors forced to react defensively.",
+         "fail_text": "Brand repositioning confused existing customer base. Trust metrics declined. Competitors exploited the transition gap."},
+    ]
+    
+    success_verdicts = [
+        "The iterative simulation achieved market breakthrough. Differentiation score exceeded 80%, establishing a defensible competitive moat. The winning strategy created sufficient barriers to prevent fast-follower replication within the next 2 market cycles.",
+        "Simulation complete — SUCCESS. The agentic pivot engine identified a viable path through {attempts} strategic iterations. Final differentiation of {diff}% with saturation reduced to {sat}% indicates a strong, sustainable market position.",
+    ]
+    
+    failure_verdicts = [
+        "SIMULATION EXHAUSTED: After {attempts} strategic pivots, the market proved too saturated for differentiation. All viable strategies were attempted but competitor reaction speed and market density prevented breakthrough. Recommend: pivot to an entirely different market vertical.",
+        "FATAL OUTCOME: The simulation ran {attempts} iterations without achieving escape velocity. Current saturation at {sat}% is unsustainable. The competitive landscape is too dense for incremental strategies to succeed.",
+    ]
+
+    used_strategies = []
+
+    try:
+        # ── Stage 0: Initialization ──
+        await websocket.send_json({
+            "status": "RUNNING",
+            "iteration": 0,
+            "maxIterations": max_iterations,
+            "stageData": {
+                "id": 0,
+                "title": "Initializing Simulation Engine",
+                "desc": "Loading market parameters, competitor profiles, and historical signal data. Preparing agentic pivot engine...",
+            },
+            "chartPoint": {"month": month_names[0], "differentiation": round(diff), "saturation": round(sat)},
+            "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0}
+        })
+        
+        await asyncio.sleep(2.0)
+
+        for i in range(1, max_iterations + 1):
+            month = month_names[i % 12]
+            
+            # Pick a strategy we haven't used yet (if possible)
+            available = [s for s in strategies if s["name"] not in used_strategies]
+            if not available:
+                available = strategies  # Recycle if exhausted
+            strategy = random.choice(available)
+            used_strategies.append(strategy["name"])
+            
+            # ── Procedural Math Engine ──
+            # Success probability increases with momentum, decreases with high saturation
+            base_chance = 1.0 - strategy["risk"]
+            momentum_bonus = min(momentum * 0.08, 0.2)  # Max 20% bonus from momentum
+            saturation_penalty = max((sat - 70) * 0.005, 0)  # Penalty when sat > 70
+            success_chance = min(max(base_chance + momentum_bonus - saturation_penalty, 0.15), 0.85)
+            
+            roll = random.random()
+            succeeded = roll < success_chance
+            
+            if succeeded:
+                # Successful pivot
+                boost = random.randint(*strategy["diff_boost"])
+                reduction = random.randint(*strategy["sat_reduce"])
+                diff += boost
+                sat -= reduction
+                momentum += 0.5
+                title = f"Attempt {i}: {strategy['name']} ✓"
+                desc = strategy["success_text"]
+            else:
+                # Failed pivot
+                penalty = random.randint(2, 12)
+                increase = random.randint(3, 10)
+                diff -= penalty
+                sat += increase
+                momentum = max(momentum - 0.3, 0)
+                title = f"Attempt {i}: {strategy['name']} ✗"
+                desc = strategy["fail_text"] + f" Pivoting to next strategy..."
+                
+            # Clamp values
+            diff = max(5, min(100, diff))
+            sat = max(10, min(100, sat))
+            
+            # ── Win/Loss Evaluation ──
+            status = "RUNNING"
+            is_final = False
+            
+            if diff >= 80:
+                is_final = True
+                status = "SUCCESS"
+                title = "✦ Outcome: Market Domination"
+                desc = random.choice(success_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+            elif sat >= 95:
+                is_final = True
+                status = "FAILURE"
+                title = "✦ Outcome: Strategic Collapse"
+                desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+            elif i == max_iterations:
+                is_final = True
+                # If diff > 60, partial success; otherwise failure
+                if diff >= 60:
+                    status = "SUCCESS"
+                    title = "✦ Outcome: Marginal Victory"
+                    desc = f"After {i} iterations, differentiation reached {round(diff)}% — sufficient for a defensible but narrow market position. Continued monitoring recommended."
+                else:
+                    status = "FAILURE"
+                    title = "✦ Outcome: Exhaustion"
+                    desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+
+            # ── Send Update ──
+            await websocket.send_json({
+                "status": status,
+                "iteration": i,
+                "maxIterations": max_iterations,
+                "stageData": {
+                    "id": i,
+                    "title": title,
+                    "desc": desc,
+                },
+                "chartPoint": {"month": month, "differentiation": round(diff), "saturation": round(sat)},
+                "kpis": {
+                    "differentiation": round(diff), 
+                    "saturation": round(sat), 
+                    "persona_drift": round(momentum * 60), 
+                    "resonance": round(1.0 + (diff / 40), 1)
+                }
+            })
+
+            if is_final:
+                break
+                
+            await asyncio.sleep(3.0)
+            
+    except WebSocketDisconnect:
+        logger.info("Simulation websocket disconnected by client")
+    except Exception as e:
+        logger.error(f"Simulation WS error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     import uvicorn
