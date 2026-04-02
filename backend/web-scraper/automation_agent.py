@@ -85,7 +85,8 @@ def run_daily_competitor_ingestion():
                     
                     snap = db.query(Snapshot).filter(Snapshot.competitor_id == comp.id).first()
                     if not snap:
-                        snap = Snapshot(competitor_id=comp.id, url=f"https://www.{comp_name.lower().replace(' ', '')}.com", created_at=created_dt)
+                        comp_url = "https://www.sulekha.com/home-services/" if comp_name == "Sulekha" else f"https://www.{comp_name.lower().replace(' ', '')}.com"
+                        snap = Snapshot(competitor_id=comp.id, url=comp_url, created_at=created_dt)
                         db.add(snap)
                         db.flush()
                     
