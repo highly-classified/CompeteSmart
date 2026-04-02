@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisco
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
-from src.database import get_db, engine
+from src.database import get_db, engine, SessionLocal
 from src import models
 from src.intelligence.clustering import ClusteringEngine
 from src.intelligence.temporal import TemporalEngine
@@ -633,91 +633,177 @@ def get_competitor_suggestions(
 async def simulate_endpoint(websocket: WebSocket):
     await websocket.accept()
     
+    # ── 1. LOAD REAL DATA FROM DATABASE ──
+    db = SessionLocal()
+    try:
+        # Fetch all competitors
+        competitors = db.query(models.Competitor).all()
+        competitor_names = [c.name for c in competitors] if competitors else ["Unknown Competitor"]
+        
+        # Fetch clusters with their real saturation and trend data
+        temp_engine = TemporalEngine(db)
+        real_saturations = temp_engine.calculate_saturation()
+        real_trends = temp_engine.calculate_trends()
+        
+        # Build cluster intelligence map
+        cluster_intel = {}
+        for s in real_saturations:
+            cid = s["cluster_id"]
+            cluster_intel[cid] = {
+                "label": s.get("cluster_label", "Unknown Theme"),
+                "saturation": s.get("saturation_score", 0.5),
+                "competitors_using": s.get("competitors_using", 1),
+                "total_competitors": s.get("total_competitors", 3),
+            }
+        for t in real_trends:
+            cid = t["cluster_id"]
+            if cid in cluster_intel:
+                cluster_intel[cid]["growth_rate"] = t.get("growth_rate", 0.0)
+                cluster_intel[cid]["trend"] = t.get("trend", "stable")
+                cluster_intel[cid]["signal_count"] = t.get("current_count", 0)
+        
+        # Pick the top clusters by saturation (most interesting for simulation)
+        sorted_clusters = sorted(cluster_intel.values(), key=lambda x: x.get("saturation", 0), reverse=True)
+        target_clusters = sorted_clusters[:8] if len(sorted_clusters) >= 8 else sorted_clusters
+        
+        # Load decision layer experiments (if available)
+        decision_experiments = []
+        try:
+            with open("decision_layer_output.json", "r") as f:
+                decision_experiments = json.load(f)
+        except Exception:
+            pass
+        
+        # ── 2. COMPUTE INITIAL CONDITIONS FROM REAL DATA ──
+        if target_clusters:
+            avg_saturation = sum(c.get("saturation", 0.5) for c in target_clusters) / len(target_clusters)
+            avg_growth = sum(c.get("growth_rate", 0.0) for c in target_clusters) / len(target_clusters)
+        else:
+            avg_saturation = 0.5
+            avg_growth = 0.0
+        
+        # Starting saturation is derived from REAL average saturation (scaled to 0-100)
+        sat = round(min(95, max(40, avg_saturation * 100)), 1)
+        # Starting differentiation is inversely related to saturation
+        diff = round(min(40, max(5, (1.0 - avg_saturation) * 50)), 1)
+        
+    except Exception as e:
+        logger.error(f"Failed to load real data for simulation: {e}")
+        competitor_names = ["Competitor A", "Competitor B"]
+        target_clusters = []
+        decision_experiments = []
+        sat = 75.0
+        diff = 20.0
+    finally:
+        db.close()
+    
+    # ── 3. BUILD DATA-DRIVEN STRATEGIES ──
     max_iterations = 8
-    diff = 20.0        # Differentiation score (higher = better)
-    sat = 80.0         # Saturation score (lower = better)
-    momentum = 0.0     # Accumulated strategic momentum
+    momentum = 0.0
     month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     
-    # ── Rich Strategy Archetypes ──
+    # Dynamically build strategies using real cluster & competitor names
+    rival_1 = competitor_names[0] if len(competitor_names) > 0 else "leading competitor"
+    rival_2 = competitor_names[1] if len(competitor_names) > 1 else "secondary competitor"
+    rival_3 = competitor_names[2] if len(competitor_names) > 2 else "emerging competitor"
+    
+    # Pick real cluster labels for contextual text
+    cl_labels = [c.get("label", "market segment")[:60] for c in target_clusters]
+    cl1 = cl_labels[0] if len(cl_labels) > 0 else "primary market segment"
+    cl2 = cl_labels[1] if len(cl_labels) > 1 else "secondary market segment"
+    cl3 = cl_labels[2] if len(cl_labels) > 2 else "emerging vertical"
+    
+    # Risk is derived from how many competitors are in that cluster
+    def cluster_risk(idx):
+        if idx < len(target_clusters):
+            c = target_clusters[idx]
+            using = c.get("competitors_using", 1)
+            total = c.get("total_competitors", 3)
+            return min(0.65, max(0.30, using / max(total, 1)))
+        return 0.45
+
     strategies = [
-        {"name": "Premium Feature Bundle", "diff_boost": (18, 35), "sat_reduce": (8, 18), "risk": 0.45,
-         "success_text": "Premium feature rollout resonated with high-value segments. Competitors cannot replicate proprietary tech stack within this cycle.",
-         "fail_text": "Premium positioning backfired — target audience perceives insufficient value delta. Market perception unchanged."},
-        {"name": "Aggressive Pricing Undercut", "diff_boost": (10, 20), "sat_reduce": (12, 25), "risk": 0.55,
-         "success_text": "Price disruption forced competitors into margin pressure. Market share shifting as budget-conscious users migrate.",
-         "fail_text": "Price war triggered — competitors matched our pricing within 48 hours. Saturation intensified across all segments."},
-        {"name": "Whitespace Niche Targeting", "diff_boost": (20, 40), "sat_reduce": (5, 15), "risk": 0.50,
-         "success_text": "Identified and captured underserved micro-segment. Zero direct competition in this vertical for the foreseeable future.",
-         "fail_text": "Niche proved too small for sustainable growth. Customer acquisition cost exceeds lifetime value projections."},
-        {"name": "AI-Driven Personalization", "diff_boost": (15, 30), "sat_reduce": (10, 20), "risk": 0.40,
-         "success_text": "AI personalization engine deployed. User engagement up 340%. Competitors lack the data infrastructure to replicate.",
-         "fail_text": "Personalization model underfitting — insufficient training data. Users report irrelevant recommendations."},
-        {"name": "Community-Led Growth", "diff_boost": (12, 25), "sat_reduce": (8, 16), "risk": 0.48,
-         "success_text": "Organic community flywheel activated. User-generated content now drives 60% of new acquisition. Defensible moat established.",
-         "fail_text": "Community engagement stalled. Users prefer competitors' established ecosystems. Network effects working against us."},
-        {"name": "Strategic Partnership Play", "diff_boost": (15, 28), "sat_reduce": (10, 22), "risk": 0.42,
-         "success_text": "Partnership secured exclusive distribution channel. Competitor access blocked for 18-month exclusivity window.",
-         "fail_text": "Partnership negotiations collapsed. Competitor secured the deal instead, strengthening their market position."},
-        {"name": "Rapid Feature Innovation", "diff_boost": (18, 32), "sat_reduce": (6, 14), "risk": 0.52,
-         "success_text": "Feature velocity outpaced all competitors 3:1. Market perception shifted to innovation leader positioning.",
-         "fail_text": "Feature bloat detected. Core product quality degraded. User churn increased due to complexity overload."},
-        {"name": "Brand Narrative Overhaul", "diff_boost": (14, 26), "sat_reduce": (10, 20), "risk": 0.46,
-         "success_text": "New brand narrative achieved viral resonance. Share-of-voice increased 280%. Competitors forced to react defensively.",
-         "fail_text": "Brand repositioning confused existing customer base. Trust metrics declined. Competitors exploited the transition gap."},
+        {"name": f"Premium Positioning vs {rival_1}", "diff_boost": (18, 35), "sat_reduce": (8, 18), "risk": cluster_risk(0),
+         "success_text": f"Premium feature rollout resonated in '{cl1}'. {rival_1} cannot replicate the proprietary tech stack within this cycle. High-value segments shifting.",
+         "fail_text": f"Premium positioning in '{cl1}' backfired — {rival_1}'s brand loyalty proved too strong. Target audience perceives insufficient value delta."},
+        {"name": f"Aggressive Undercut in '{cl2[:30]}'", "diff_boost": (10, 22), "sat_reduce": (12, 25), "risk": cluster_risk(1),
+         "success_text": f"Price disruption in '{cl2}' forced {rival_2} into margin pressure. Budget-conscious users are migrating at scale.",
+         "fail_text": f"Price war triggered in '{cl2}' — {rival_2} matched pricing within 48 hours. Saturation intensified across all segments."},
+        {"name": f"Whitespace Niche: '{cl3[:30]}'", "diff_boost": (20, 40), "sat_reduce": (5, 15), "risk": cluster_risk(2),
+         "success_text": f"Captured underserved micro-segment '{cl3}'. Zero direct competition detected. First-mover advantage established.",
+         "fail_text": f"The niche '{cl3}' proved too narrow for sustainable growth. Customer acquisition cost exceeds lifetime value."},
+        {"name": "AI-Driven Personalization Engine", "diff_boost": (15, 30), "sat_reduce": (10, 20), "risk": 0.40,
+         "success_text": f"AI personalization deployed across user base. Engagement up 340%. {rival_1} and {rival_2} lack data infrastructure to replicate.",
+         "fail_text": f"Personalization model underfitting — users report irrelevant recommendations. {rival_1} already has a stronger data moat."},
+        {"name": f"Community-Led Growth vs {rival_2}", "diff_boost": (12, 25), "sat_reduce": (8, 16), "risk": 0.48,
+         "success_text": f"Organic community flywheel activated. User-generated content now drives 60% of new acquisition. Defensible moat established against {rival_2}.",
+         "fail_text": f"Community engagement stalled. Users prefer {rival_2}'s established ecosystem. Network effects working against us."},
+        {"name": f"Strategic Partnership Play", "diff_boost": (15, 28), "sat_reduce": (10, 22), "risk": 0.42,
+         "success_text": f"Partnership secured exclusive distribution channel in '{cl1}'. {rival_3} access blocked for 18-month exclusivity window.",
+         "fail_text": f"Partnership negotiations collapsed. {rival_1} secured the deal instead, strengthening their position in '{cl1}'."},
+        {"name": "Rapid Feature Innovation Sprint", "diff_boost": (18, 32), "sat_reduce": (6, 14), "risk": 0.52,
+         "success_text": f"Feature velocity outpaced all {len(competitor_names)} tracked competitors 3:1. Market perception shifted to innovation leader positioning.",
+         "fail_text": f"Feature bloat detected. Core product quality degraded. {rival_1} capitalized on our instability."},
+        {"name": f"Brand Narrative Overhaul", "diff_boost": (14, 26), "sat_reduce": (10, 20), "risk": 0.46,
+         "success_text": f"New brand narrative achieved viral resonance against {rival_1}. Share-of-voice increased 280%. Competitors forced to react defensively.",
+         "fail_text": f"Brand repositioning confused existing customer base. Trust metrics declined. {rival_2} exploited the transition gap."},
     ]
     
     success_verdicts = [
-        "The iterative simulation achieved market breakthrough. Differentiation score exceeded 80%, establishing a defensible competitive moat. The winning strategy created sufficient barriers to prevent fast-follower replication within the next 2 market cycles.",
+        f"The iterative simulation achieved market breakthrough against {', '.join(competitor_names[:3])}. Differentiation score exceeded 80%, establishing a defensible competitive moat across {len(target_clusters)} analyzed market clusters.",
         "Simulation complete — SUCCESS. The agentic pivot engine identified a viable path through {attempts} strategic iterations. Final differentiation of {diff}% with saturation reduced to {sat}% indicates a strong, sustainable market position.",
     ]
     
     failure_verdicts = [
-        "SIMULATION EXHAUSTED: After {attempts} strategic pivots, the market proved too saturated for differentiation. All viable strategies were attempted but competitor reaction speed and market density prevented breakthrough. Recommend: pivot to an entirely different market vertical.",
-        "FATAL OUTCOME: The simulation ran {attempts} iterations without achieving escape velocity. Current saturation at {sat}% is unsustainable. The competitive landscape is too dense for incremental strategies to succeed.",
+        f"SIMULATION EXHAUSTED: After {{attempts}} strategic pivots against {rival_1} and {rival_2}, the market proved too saturated for differentiation. All viable strategies were attempted but competitor reaction speed prevented breakthrough.",
+        "FATAL OUTCOME: The simulation ran {attempts} iterations without achieving escape velocity. Current saturation at {sat}% is unsustainable. The competitive landscape across {len_clusters} clusters is too dense for incremental strategies.".replace("{len_clusters}", str(len(target_clusters))),
     ]
 
     used_strategies = []
 
     try:
-        # ── Stage 0: Initialization ──
+        # ── Stage 0: Data-Driven Initialization ──
+        init_desc = (
+            f"Loaded {len(target_clusters)} market clusters, {len(competitor_names)} competitors "
+            f"({', '.join(competitor_names[:3])}), and {len(decision_experiments)} experiment recommendations. "
+            f"Real-time market saturation: {sat}%. Starting differentiation baseline: {diff}%."
+        )
+        
         await websocket.send_json({
             "status": "RUNNING",
             "iteration": 0,
             "maxIterations": max_iterations,
             "stageData": {
                 "id": 0,
-                "title": "Initializing Simulation Engine",
-                "desc": "Loading market parameters, competitor profiles, and historical signal data. Preparing agentic pivot engine...",
+                "title": "Initializing with Real Market Data",
+                "desc": init_desc,
             },
             "chartPoint": {"month": month_names[0], "differentiation": round(diff), "saturation": round(sat)},
             "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0}
         })
         
-        await asyncio.sleep(2.0)
+        await asyncio.sleep(2.5)
 
         for i in range(1, max_iterations + 1):
             month = month_names[i % 12]
             
-            # Pick a strategy we haven't used yet (if possible)
+            # Pick a strategy we haven't used yet
             available = [s for s in strategies if s["name"] not in used_strategies]
             if not available:
-                available = strategies  # Recycle if exhausted
+                available = strategies
             strategy = random.choice(available)
             used_strategies.append(strategy["name"])
             
-            # ── Procedural Math Engine ──
-            # Success probability increases with momentum, decreases with high saturation
+            # ── Data-Driven Probability Engine ──
             base_chance = 1.0 - strategy["risk"]
-            momentum_bonus = min(momentum * 0.08, 0.2)  # Max 20% bonus from momentum
-            saturation_penalty = max((sat - 70) * 0.005, 0)  # Penalty when sat > 70
+            momentum_bonus = min(momentum * 0.08, 0.2)
+            saturation_penalty = max((sat - 70) * 0.005, 0)
             success_chance = min(max(base_chance + momentum_bonus - saturation_penalty, 0.15), 0.85)
             
             roll = random.random()
             succeeded = roll < success_chance
             
             if succeeded:
-                # Successful pivot
                 boost = random.randint(*strategy["diff_boost"])
                 reduction = random.randint(*strategy["sat_reduce"])
                 diff += boost
@@ -726,16 +812,14 @@ async def simulate_endpoint(websocket: WebSocket):
                 title = f"Attempt {i}: {strategy['name']} ✓"
                 desc = strategy["success_text"]
             else:
-                # Failed pivot
                 penalty = random.randint(2, 12)
                 increase = random.randint(3, 10)
                 diff -= penalty
                 sat += increase
                 momentum = max(momentum - 0.3, 0)
                 title = f"Attempt {i}: {strategy['name']} ✗"
-                desc = strategy["fail_text"] + f" Pivoting to next strategy..."
+                desc = strategy["fail_text"] + " Pivoting to next strategy..."
                 
-            # Clamp values
             diff = max(5, min(100, diff))
             sat = max(10, min(100, sat))
             
@@ -755,17 +839,15 @@ async def simulate_endpoint(websocket: WebSocket):
                 desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
             elif i == max_iterations:
                 is_final = True
-                # If diff > 60, partial success; otherwise failure
                 if diff >= 60:
                     status = "SUCCESS"
                     title = "✦ Outcome: Marginal Victory"
-                    desc = f"After {i} iterations, differentiation reached {round(diff)}% — sufficient for a defensible but narrow market position. Continued monitoring recommended."
+                    desc = f"After {i} iterations against {rival_1} and {rival_2}, differentiation reached {round(diff)}% — sufficient for a defensible but narrow position. Continued monitoring recommended."
                 else:
                     status = "FAILURE"
                     title = "✦ Outcome: Exhaustion"
                     desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
 
-            # ── Send Update ──
             await websocket.send_json({
                 "status": status,
                 "iteration": i,
