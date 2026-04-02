@@ -206,6 +206,14 @@ export default function Dashboard() {
 
   const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
   const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[]; whitespace: any[]; strength: any[] } | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/summary-insights")
+      .then(res => res.json())
+      .then(setSummary)
+      .catch(e => console.error("Summary fetch error", e));
+  }, []);
 
   useEffect(() => {
     fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
@@ -280,10 +288,12 @@ export default function Dashboard() {
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
 
-  // Derived summary values from mock data
-  const fastestGrowingCluster = MOCK_TREND_KEYS[0]; // AI & Automation
-  const highestSaturation = MOCK_DISTRIBUTION_DATA[0].name; // Price & Value
-  const topOpportunity = analysisData?.whitespace?.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
+  // Derived summary values from dynamic API
+  const fastestGrowingName = summary?.fastest_growing?.name || "Loading...";
+  const fastestGrowingGrowth = summary?.fastest_growing?.growth || 0;
+  const highestSaturation = summary?.saturation?.category || "Loading...";
+  const topOpportunity = summary?.opportunity?.category || "Loading...";
+  const trackedClusters = summary?.clusters?.count || 0;
 
   // ─────────────────────────────────────────
   // Main render
@@ -345,8 +355,8 @@ export default function Dashboard() {
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full" />
             <div className="bg-emerald-500/10 p-3 rounded-2xl text-emerald-400 w-fit mb-4 group-hover:scale-110 transition-transform"><TrendingUp className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Fastest Growing</h3>
-            <p className="text-xl font-bold text-white mb-2 truncate" title={fastestGrowingCluster}>{fastestGrowingCluster}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Top emerging cluster from competitor signals.</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={fastestGrowingName}>{fastestGrowingName}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">+{fastestGrowingGrowth} growth in last 30 days.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
@@ -354,7 +364,7 @@ export default function Dashboard() {
             <div className="bg-red-500/10 p-3 rounded-2xl text-red-400 w-fit mb-4 group-hover:scale-110 transition-transform"><AlertTriangle className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Highest Saturation</h3>
             <p className="text-xl font-bold text-white mb-2 truncate" title={highestSaturation}>{highestSaturation}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Most crowded segment. Avoid direct competition.</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Most crowded segment.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
@@ -362,14 +372,14 @@ export default function Dashboard() {
             <div className="bg-violet-500/10 p-3 rounded-2xl text-violet-400 w-fit mb-4 group-hover:scale-110 transition-transform"><Lightbulb className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Top Opportunity</h3>
             <p className="text-xl font-bold text-white mb-2 truncate" title={topOpportunity}>{topOpportunity}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Highest ROI whitespace gap identified.</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Low competition, high potential.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all flex flex-col justify-center overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 blur-3xl rounded-full" />
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-4">Clusters Tracked</h3>
-            <p className="text-4xl font-black text-white">{MOCK_TREND_KEYS.length}</p>
-            <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes</p>
+            <p className="text-4xl font-black text-white">{trackedClusters}</p>
+            <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes Identifed</p>
           </div>
         </div>
 

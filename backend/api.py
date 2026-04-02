@@ -298,6 +298,89 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 # Frontend Chart Endpoints
 # ==========================================
 
+@app.get("/api/summary-insights")
+def get_summary_insights(db: Session = Depends(get_db)):
+    """Dynamic Executive Summary Cards"""
+
+    # 1. Fastest Growing Competitor
+    growth_query = """
+    WITH recent AS (
+        SELECT c.name, COUNT(*) AS cnt
+        FROM extracted_content ec
+        JOIN snapshots s ON ec.snapshot_id = s.id
+        JOIN competitors c ON s.competitor_id = c.id
+        WHERE ec.created_at >= NOW() - INTERVAL '30 days'
+        GROUP BY c.name
+    ),
+    previous AS (
+        SELECT c.name, COUNT(*) AS cnt
+        FROM extracted_content ec
+        JOIN snapshots s ON ec.snapshot_id = s.id
+        JOIN competitors c ON s.competitor_id = c.id
+        WHERE ec.created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'
+        GROUP BY c.name
+    )
+    SELECT r.name,
+    (r.cnt - COALESCE(p.cnt, 0)) AS growth
+    FROM recent r
+    LEFT JOIN previous p ON r.name = p.name
+    ORDER BY growth DESC
+    LIMIT 1;
+    """
+    try:
+        growth_res = db.execute(text(growth_query)).fetchone()
+        fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if growth_res else {"name": "N/A", "growth": 0}
+    except Exception as e:
+        logger.error(f"Error fetching growth: {e}")
+        fastest_growing = {"name": "N/A", "growth": 0}
+
+    # 2. Most Saturated Category
+    sat_query = """
+    SELECT s.category, COUNT(*) AS total
+    FROM signals s
+    WHERE s.category IS NOT NULL AND s.category != ''
+    GROUP BY s.category
+    ORDER BY total DESC
+    LIMIT 1;
+    """
+    try:
+        sat_res = db.execute(text(sat_query)).fetchone()
+        saturation = {"category": sat_res[0] if sat_res else "N/A", "level": "high"}
+    except Exception:
+        saturation = {"category": "N/A", "level": "high"}
+
+    # 3. Top Opportunity Category
+    opp_query = """
+    SELECT s.category, COUNT(*) AS total
+    FROM signals s
+    WHERE s.category IS NOT NULL AND s.category != ''
+    GROUP BY s.category
+    ORDER BY total ASC
+    LIMIT 1;
+    """
+    try:
+        opp_res = db.execute(text(opp_query)).fetchone()
+        opportunity = {"category": opp_res[0] if opp_res else "N/A", "level": "low"}
+    except Exception:
+        opportunity = {"category": "N/A", "level": "low"}
+
+    # 4. Clusters Tracked
+    clusters_query = """
+    SELECT COUNT(*) AS total_clusters FROM clusters;
+    """
+    try:
+        clusters_res = db.execute(text(clusters_query)).fetchone()
+        clusters_count = clusters_res[0] if clusters_res else 0
+    except Exception:
+        clusters_count = 0
+
+    return {
+        "fastest_growing": fastest_growing,
+        "saturation": saturation,
+        "opportunity": opportunity,
+        "clusters": {"count": clusters_count}
+    }
+
 @app.get("/api/competitor-analysis")
 def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):
     # WHERE Clause based on selection
