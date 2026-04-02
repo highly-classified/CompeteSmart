@@ -16,8 +16,14 @@ import os
 import json
 import logging
 import sys
+import time
 from src.execution_copilot import chat_with_experiment
 
+SUMMARY_CACHE = {
+    "data": None,
+    "timestamp": 0
+}
+CACHE_TTL = 300  # 5 minutes
 # Configure logging to see progress in Render dashboard
 logging.basicConfig(
     level=logging.INFO,
@@ -300,7 +306,11 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 
 @app.get("/api/summary-insights")
 def get_summary_insights(db: Session = Depends(get_db)):
-    """Dynamic Executive Summary Cards"""
+    """Dynamic Executive Summary Cards with Caching"""
+    
+    current_time = time.time()
+    if SUMMARY_CACHE["data"] and (current_time - SUMMARY_CACHE["timestamp"] < CACHE_TTL):
+        return SUMMARY_CACHE["data"]
 
     # 1. Fastest Growing Competitor
     growth_query = """
@@ -336,33 +346,35 @@ def get_summary_insights(db: Session = Depends(get_db)):
 
     # 2. Most Saturated Category
     sat_query = """
-    SELECT s.category, COUNT(*) AS total
+    SELECT cl.label AS theme, COUNT(*) AS density
     FROM signals s
-    WHERE s.category IS NOT NULL AND s.category != ''
-    GROUP BY s.category
-    ORDER BY total DESC
+    JOIN clusters cl ON s.cluster_id = cl.id
+    WHERE s.cluster_id IS NOT NULL
+    GROUP BY cl.label
+    ORDER BY density DESC
     LIMIT 1;
     """
     try:
         sat_res = db.execute(text(sat_query)).fetchone()
-        saturation = {"category": sat_res[0] if sat_res else "N/A", "level": "high"}
+        saturation = {"theme": sat_res[0] if sat_res else "N/A", "level": "high"}
     except Exception:
-        saturation = {"category": "N/A", "level": "high"}
+        saturation = {"theme": "N/A", "level": "high"}
 
     # 3. Top Opportunity Category
     opp_query = """
-    SELECT s.category, COUNT(*) AS total
+    SELECT cl.label AS theme, COUNT(*) AS density
     FROM signals s
-    WHERE s.category IS NOT NULL AND s.category != ''
-    GROUP BY s.category
-    ORDER BY total ASC
+    JOIN clusters cl ON s.cluster_id = cl.id
+    WHERE s.cluster_id IS NOT NULL
+    GROUP BY cl.label
+    ORDER BY density ASC
     LIMIT 1;
     """
     try:
         opp_res = db.execute(text(opp_query)).fetchone()
-        opportunity = {"category": opp_res[0] if opp_res else "N/A", "level": "low"}
+        opportunity = {"theme": opp_res[0] if opp_res else "N/A", "level": "low"}
     except Exception:
-        opportunity = {"category": "N/A", "level": "low"}
+        opportunity = {"theme": "N/A", "level": "low"}
 
     # 4. Clusters Tracked
     clusters_query = """
@@ -374,12 +386,17 @@ def get_summary_insights(db: Session = Depends(get_db)):
     except Exception:
         clusters_count = 0
 
-    return {
+    result = {
         "fastest_growing": fastest_growing,
         "saturation": saturation,
         "opportunity": opportunity,
         "clusters": {"count": clusters_count}
     }
+    
+    SUMMARY_CACHE["data"] = result
+    SUMMARY_CACHE["timestamp"] = current_time
+    
+    return result
 
 @app.get("/api/competitor-analysis")
 def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):

@@ -209,14 +209,14 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/summary-insights")
+    fetch("http://localhost:8000/api/summary-insights")
       .then(res => res.json())
       .then(setSummary)
       .catch(e => console.error("Summary fetch error", e));
   }, []);
 
   useEffect(() => {
-    fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
+    fetch(`http://localhost:8000/api/competitor-analysis?competitor=${selectedCompetitor}`)
       .then((res) => {
         if (!res.ok) throw new Error("API error");
         return res.json();
@@ -291,8 +291,8 @@ export default function Dashboard() {
   // Derived summary values from dynamic API
   const fastestGrowingName = summary?.fastest_growing?.name || "Loading...";
   const fastestGrowingGrowth = summary?.fastest_growing?.growth || 0;
-  const highestSaturation = summary?.saturation?.category || "Loading...";
-  const topOpportunity = summary?.opportunity?.category || "Loading...";
+  const highestSaturation = summary?.saturation?.theme || "Loading...";
+  const topOpportunity = summary?.opportunity?.theme || "Loading...";
   const trackedClusters = summary?.clusters?.count || 0;
 
   // ─────────────────────────────────────────
