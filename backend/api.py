@@ -11,13 +11,7 @@ from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult,
 from src.auth import get_current_user
 from typing import List, Dict, Optional
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
-import os
-import json
-import logging
-import sys
-import time
-from src.execution_copilot import chat_with_experiment
+from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
 
 SUMMARY_CACHE = {
     "data": None,
@@ -306,198 +300,40 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 
 @app.get("/api/summary-insights")
 def get_summary_insights(db: Session = Depends(get_db)):
-    """Dynamic Executive Summary Cards with Caching"""
+    """Fetch Summary Insights from Persistent Cache with Fallback"""
+    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "summary_insights").first()
+    if cache_entry:
+        return cache_entry.data
     
-    current_time = time.time()
-    if SUMMARY_CACHE["data"] and (current_time - SUMMARY_CACHE["timestamp"] < CACHE_TTL):
-        return SUMMARY_CACHE["data"]
-
-    # 1. Fastest Growing Competitor
-    growth_query = """
-    WITH recent AS (
-        SELECT c.name, COUNT(*) AS cnt
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        WHERE ec.created_at >= NOW() - INTERVAL '30 days'
-        GROUP BY c.name
-    ),
-    previous AS (
-        SELECT c.name, COUNT(*) AS cnt
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        WHERE ec.created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'
-        GROUP BY c.name
-    )
-    SELECT r.name,
-    (r.cnt - COALESCE(p.cnt, 0)) AS growth
-    FROM recent r
-    LEFT JOIN previous p ON r.name = p.name
-    ORDER BY growth DESC
-    LIMIT 1;
-    """
-    try:
-        growth_res = db.execute(text(growth_query)).fetchone()
-        fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if growth_res else {"name": "N/A", "growth": 0}
-    except Exception as e:
-        logger.error(f"Error fetching growth: {e}")
-        fastest_growing = {"name": "N/A", "growth": 0}
-
-    # 2. Most Saturated Category
-    sat_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
-    FROM signals s
-    JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label
-    ORDER BY density DESC
-    LIMIT 1;
-    """
-    try:
-        sat_res = db.execute(text(sat_query)).fetchone()
-        saturation = {"theme": sat_res[0] if sat_res else "N/A", "level": "high"}
-    except Exception:
-        saturation = {"theme": "N/A", "level": "high"}
-
-    # 3. Top Opportunity Category
-    opp_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
-    FROM signals s
-    JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label
-    ORDER BY density ASC
-    LIMIT 1;
-    """
-    try:
-        opp_res = db.execute(text(opp_query)).fetchone()
-        opportunity = {"theme": opp_res[0] if opp_res else "N/A", "level": "low"}
-    except Exception:
-        opportunity = {"theme": "N/A", "level": "low"}
-
-    # 4. Clusters Tracked
-    clusters_query = """
-    SELECT COUNT(*) AS total_clusters FROM clusters;
-    """
-    try:
-        clusters_res = db.execute(text(clusters_query)).fetchone()
-        clusters_count = clusters_res[0] if clusters_res else 0
-    except Exception:
-        clusters_count = 0
-
-    result = {
-        "fastest_growing": fastest_growing,
-        "saturation": saturation,
-        "opportunity": opportunity,
-        "clusters": {"count": clusters_count}
-    }
-    
-    SUMMARY_CACHE["data"] = result
-    SUMMARY_CACHE["timestamp"] = current_time
-    
-    return result
+    # Fallback to computing and caching if missing
+    logger.info("Cache miss for summary_insights. Recomputing...")
+    data = compute_summary_insights(db)
+    new_cache = models.DashboardCache(key="summary_insights", data=data)
+    db.merge(new_cache)
+    db.commit()
+    return data
 
 @app.get("/api/competitor-analysis")
 def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):
-    # WHERE Clause based on selection
-    where_clause_ec = "WHERE c.name = :comp" if competitor != "ALL" else ""
-    where_clause_sig = "WHERE c.name = :comp" if competitor != "ALL" else ""
-    params = {"comp": competitor} if competitor != "ALL" else {}
-
-    # Trend Over Time
-    time_filter = "ec.created_at >= NOW() - INTERVAL '18 months'"
-    trend_where = f"{where_clause_ec} AND {time_filter}" if where_clause_ec else f"WHERE {time_filter}"
-
-    trend_query = f"""
-    SELECT 
-        c.name AS competitor,
-        TO_CHAR(DATE_TRUNC('month', ec.created_at), 'YYYY-MM') AS month,
-        COUNT(*) AS activity
-    FROM extracted_content ec
-    JOIN snapshots s ON ec.snapshot_id = s.id
-    JOIN competitors c ON s.competitor_id = c.id
-    {trend_where}
-    GROUP BY c.name, DATE_TRUNC('month', ec.created_at)
-    ORDER BY DATE_TRUNC('month', ec.created_at) ASC;
-    """
-    trend_res = db.execute(text(trend_query), params).fetchall()
-    trends = [{"competitor": row[0], "month": row[1], "activity": float(row[2])} for row in trend_res]
-
-    # Theme Distribution
-    theme_query = f"""
-    SELECT 
-        c.name AS competitor,
-        s.category,
-        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY c.name)), 2) AS percentage
-    FROM signals s
-    JOIN competitors c ON s.competitor_id = c.id
-    {where_clause_sig}
-    GROUP BY c.name, s.category;
-    """
-    theme_res = db.execute(text(theme_query), params).fetchall()
-    themes = [{"competitor": row[0], "category": row[1] if row[1] else "General", "percentage": float(row[2])} for row in theme_res]
-
-    # Positioning Map
-    pos_query = f"""
-    WITH counts AS (
-        SELECT c.name, COUNT(*) AS total
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    max_val AS (
-        SELECT MAX(total) AS max_total FROM counts
-    )
-    SELECT 
-        c.name,
-        ROUND((c.total * 10.0 / m.max_total), 2) AS activity_score
-    FROM counts c, max_val m;
-    """
-    pos_res = db.execute(text(pos_query), params).fetchall()
+    """Fetch Competitor Analysis from Persistent Cache with Fallback"""
+    cache_key = f"comp_analysis_{competitor}"
+    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == cache_key).first()
+    if cache_entry:
+        return cache_entry.data
     
-    # Mocking price_index and trust_score for scatter plot
-    mock_pos = {
-        "Urban Company": {"price_index": 8.5, "trust_score": 9.0},
-        "Housejoy": {"price_index": 6.0, "trust_score": 6.5},
-        "Sulekha": {"price_index": 4.0, "trust_score": 5.0}
-    }
-    
-    positioning = []
-    for row in pos_res:
-        comp_name = row[0]
-        pos_data = mock_pos.get(comp_name, {"price_index": 5.0, "trust_score": 5.0})
-        positioning.append({
-            "competitor": comp_name,
-            "activity_score": float(row[1]),
-            "price_index": pos_data["price_index"],
-            "trust_score": pos_data["trust_score"]
-        })
+    # Fallback to computing and caching if missing
+    logger.info(f"Cache miss for {cache_key}. Recomputing...")
+    data = compute_competitor_analysis(db, competitor)
+    new_cache = models.DashboardCache(key=cache_key, data=data)
+    db.merge(new_cache)
+    db.commit()
+    return data
 
-    # Whitespace Map
-    white_query = f"""
-    WITH competitor_scores AS (
-        SELECT
-            c.name AS competitor,
-            COUNT(ec.id) AS activity
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    normalized AS (
-        SELECT
-            competitor,
-            activity * 100.0 / MAX(activity) OVER () AS x
-        FROM competitor_scores
-    )
-    SELECT
-        competitor,
-        x,
-        RANDOM() * 100 AS y
+@app.post("/api/refresh-cache")
+def trigger_cache_refresh(db: Session = Depends(get_db)):
+    """Force rebuild the entire dashboard cache"""
+    refresh_dashboard_cache(db)
+    return {"status": "success", "message": "Dashboard cache rebuilt"}
     FROM normalized;
     """
     white_res = db.execute(text(white_query), params).fetchall()
