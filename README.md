@@ -51,7 +51,7 @@
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/shruthi/CompeteSmart.git
+https://github.com/highly-classified/CompeteSmart.git
 cd CompeteSmart
 ```
 
