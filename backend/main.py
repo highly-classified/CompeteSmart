@@ -30,6 +30,8 @@ from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.trust_layer import compute_trust_score
 from decision_layer import process_decisions
+from src.cache_manager import refresh_dashboard_cache
+
 
 # Data Layer (web-scraper)
 import db
@@ -183,7 +185,13 @@ async def main():
         logger.info(f"Insights   : {len(final_output)}")
         logger.info("="*30)
         
+        # 9. Persistent Dashboard Cache Update
+        logger.info("[Step 9] Updating Persistent Dashboard Cache...")
+        refresh_dashboard_cache(session)
+        logger.info(" -> Global dashboard cache refreshed.")
+
         logger.info(f"--- PIPELINE COMPLETE ✓ Output saved to {output_path} ---")
+
 
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")

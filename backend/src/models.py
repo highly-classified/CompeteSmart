@@ -82,3 +82,10 @@ class UserProfile(Base):
     company_name = Column(String, nullable=False)
     website = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class DashboardCache(Base):
+    __tablename__ = "dashboard_cache"
+    key = Column(String, primary_key=True)
+    data = Column(JSONB)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
