@@ -281,6 +281,87 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 # Frontend Chart Endpoints
 # ==========================================
 
+@app.get("/api/competitor-analysis")
+def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):
+    # WHERE Clause based on selection
+    where_clause_ec = "WHERE c.name = :comp" if competitor != "ALL" else ""
+    where_clause_sig = "WHERE c.name = :comp" if competitor != "ALL" else ""
+    params = {"comp": competitor} if competitor != "ALL" else {}
+
+    # Trend Over Time
+    trend_query = f"""
+    SELECT 
+        c.name AS competitor,
+        TO_CHAR(DATE_TRUNC('month', ec.created_at), 'YYYY-MM') AS month,
+        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY DATE_TRUNC('month', ec.created_at))), 2) AS normalized_activity
+    FROM extracted_content ec
+    JOIN snapshots s ON ec.snapshot_id = s.id
+    JOIN competitors c ON s.competitor_id = c.id
+    {where_clause_ec}
+    GROUP BY c.name, DATE_TRUNC('month', ec.created_at)
+    ORDER BY DATE_TRUNC('month', ec.created_at) ASC;
+    """
+    trend_res = db.execute(text(trend_query), params).fetchall()
+    trends = [{"competitor": row[0], "month": row[1], "normalized_activity": float(row[2])} for row in trend_res]
+
+    # Theme Distribution
+    theme_query = f"""
+    SELECT 
+        c.name AS competitor,
+        s.category,
+        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY c.name)), 2) AS percentage
+    FROM signals s
+    JOIN competitors c ON s.competitor_id = c.id
+    {where_clause_sig}
+    GROUP BY c.name, s.category;
+    """
+    theme_res = db.execute(text(theme_query), params).fetchall()
+    themes = [{"competitor": row[0], "category": row[1] if row[1] else "General", "percentage": float(row[2])} for row in theme_res]
+
+    # Positioning Map
+    pos_query = f"""
+    WITH counts AS (
+        SELECT c.name, COUNT(*) AS total
+        FROM extracted_content ec
+        JOIN snapshots s ON ec.snapshot_id = s.id
+        JOIN competitors c ON s.competitor_id = c.id
+        {where_clause_ec}
+        GROUP BY c.name
+    ),
+    max_val AS (
+        SELECT MAX(total) AS max_total FROM counts
+    )
+    SELECT 
+        c.name,
+        ROUND((c.total * 10.0 / m.max_total), 2) AS activity_score
+    FROM counts c, max_val m;
+    """
+    pos_res = db.execute(text(pos_query), params).fetchall()
+    
+    # Mocking price_index and trust_score for scatter plot
+    mock_pos = {
+        "Urban Company": {"price_index": 8.5, "trust_score": 9.0},
+        "Housejoy": {"price_index": 6.0, "trust_score": 6.5},
+        "Sulekha": {"price_index": 4.0, "trust_score": 5.0}
+    }
+    
+    positioning = []
+    for row in pos_res:
+        comp_name = row[0]
+        pos_data = mock_pos.get(comp_name, {"price_index": 5.0, "trust_score": 5.0})
+        positioning.append({
+            "competitor": comp_name,
+            "activity_score": float(row[1]),
+            "price_index": pos_data["price_index"],
+            "trust_score": pos_data["trust_score"]
+        })
+
+    return {
+        "trend": trends,
+        "themes": themes,
+        "positioning": positioning
+    }
+
 @app.get("/api/charts/opportunity")
 def get_chart_opportunity(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
     """

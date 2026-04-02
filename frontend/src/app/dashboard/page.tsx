@@ -25,6 +25,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
+import { useEffect } from "react";
 
 // ─────────────────────────────────────────────
 // Types
@@ -51,6 +52,11 @@ interface Experiment {
 // ─────────────────────────────────────────────
 
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
+const COMP_BRAND_COLORS: Record<string, string> = {
+  "Urban Company": "#a78bfa", // Purple
+  "Housejoy": "#34d399", // Green
+  "Sulekha": "#fbbf24", // Yellow
+};
 const PIE_COLORS = ["#f87171", "#60a5fa", "#34d399", "#a78bfa", "#f472b6"];
 const COMPETITOR_COLORS = {
   pricing: "#f87171",
@@ -215,6 +221,60 @@ export default function Dashboard() {
   const [experiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
+  const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
+  const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[] } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("API error");
+        return res.json();
+      })
+      .then((data) => {
+        // Transform trend data into Recharts format (pivot by month)
+        const trendMap: Record<string, any> = {};
+        const compsInTrend = new Set<string>();
+        for (const item of data.trend) {
+          if (!trendMap[item.month]) trendMap[item.month] = { time: item.month };
+          trendMap[item.month][item.competitor] = item.normalized_activity;
+          compsInTrend.add(item.competitor);
+        }
+
+        // Pivot themes for grouping if ALL, else straightforward
+        let processedThemes = [];
+        if (selectedCompetitor === "ALL") {
+            const themeMap: Record<string, any> = {};
+            for (const item of data.themes) {
+                if (!themeMap[item.category]) themeMap[item.category] = { category: item.category };
+                themeMap[item.category][item.competitor] = item.percentage;
+            }
+            processedThemes = Object.values(themeMap);
+        } else {
+            processedThemes = data.themes.map((t: any, i: number) => ({
+                name: t.category,
+                value: t.percentage,
+                fill: PIE_COLORS[i % PIE_COLORS.length]
+            }));
+        }
+
+        // Positioning
+        const processedPositioning = data.positioning.map((p: any) => ({
+            name: p.competitor,
+            x: p.price_index,
+            y: p.trust_score,
+            z: p.activity_score,
+            fill: COMP_BRAND_COLORS[p.competitor] || "#60a5fa"
+        }));
+
+        setAnalysisData({
+          trend: { data: Object.values(trendMap), keys: Array.from(compsInTrend) },
+          themes: processedThemes,
+          positioning: processedPositioning
+        });
+      })
+      .catch((e) => console.error(e));
+  }, [selectedCompetitor]);
+
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
 
@@ -250,6 +310,16 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select 
+            className="px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-violet-500"
+            value={selectedCompetitor}
+            onChange={(e) => setSelectedCompetitor(e.target.value)}
+          >
+            <option value="ALL">All Competitors</option>
+            <option value="Urban Company">Urban Company</option>
+            <option value="Housejoy">Housejoy</option>
+            <option value="Sulekha">Sulekha</option>
+          </select>
           <Link
             href="/experiment-builder"
             className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
@@ -319,18 +389,18 @@ export default function Dashboard() {
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={MOCK_TREND_DATA}>
+                  <LineChart data={analysisData ? analysisData.trend.data : MOCK_TREND_DATA}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <XAxis dataKey={analysisData ? "time" : "time"} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
-                    {MOCK_TREND_KEYS.map((key, i) => (
+                    {(analysisData ? analysisData.trend.keys : MOCK_TREND_KEYS).map((key: string, i: number) => (
                       <Line
                         key={key}
                         type="monotone"
                         dataKey={key}
-                        stroke={CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
+                        stroke={COMP_BRAND_COLORS[key] || CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
                         strokeWidth={3}
                         dot={{ r: 0 }}
                         activeDot={{ r: 5, strokeWidth: 0 }}
@@ -351,23 +421,38 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="h-64 w-full relative">
-                <>
+                {selectedCompetitor === "ALL" ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={MOCK_DISTRIBUTION_DATA} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
-                        {MOCK_DISTRIBUTION_DATA.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
+                    <BarChart data={analysisData ? analysisData.themes : []}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                      <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
-                    </PieChart>
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
+                      <Bar dataKey="Urban Company" stackId="a" fill={COMP_BRAND_COLORS["Urban Company"]} />
+                      <Bar dataKey="Housejoy" stackId="a" fill={COMP_BRAND_COLORS["Housejoy"]} />
+                      <Bar dataKey="Sulekha" stackId="a" fill={COMP_BRAND_COLORS["Sulekha"]} />
+                    </BarChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-[70px]">
-                    <span className="text-3xl font-black text-white">{MOCK_DISTRIBUTION_DATA[0]?.value}%</span>
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{MOCK_DISTRIBUTION_DATA[0]?.name}</span>
-                  </div>
-                </>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
+                          {(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA).map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-[70px]">
+                      <span className="text-3xl font-black text-white">{(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA)[0]?.value?.toFixed(1) || 0}%</span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA)[0]?.name || "—"}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -390,7 +475,7 @@ export default function Dashboard() {
                     <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 1]} hide />
                     <ZAxis range={[150, 600]} />
                     <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }} />
-                    {MOCK_POSITIONING_DATA.map((entry, index) => (
+                    {(analysisData ? analysisData.positioning : MOCK_POSITIONING_DATA).map((entry: any, index: number) => (
                       <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
                     ))}
                   </ScatterChart>
