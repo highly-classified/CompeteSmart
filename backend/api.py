@@ -1,8 +1,8 @@
-from fastapi import FastAPI, Depends, BackgroundTasks
+from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func
-from src.database import get_db, engine
+from src.database import get_db, engine, SessionLocal
 from src import models
 from src.intelligence.clustering import ClusteringEngine
 from src.intelligence.temporal import TemporalEngine
@@ -16,12 +16,15 @@ import os
 import json
 import logging
 import sys
+import asyncio
+import random
 import time
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
+from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
 from src.execution_copilot import chat_with_experiment
 
 SUMMARY_CACHE = {
@@ -58,12 +61,16 @@ def startup_db():
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "https://compete-smart.vercel.app"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -311,271 +318,40 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 
 @app.get("/api/summary-insights")
 def get_summary_insights(db: Session = Depends(get_db)):
-    """Dynamic Executive Summary Cards with Caching"""
+    """Fetch Summary Insights from Persistent Cache with Fallback"""
+    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "summary_insights").first()
+    if cache_entry:
+        return cache_entry.data
     
-    current_time = time.time()
-    if SUMMARY_CACHE["data"] and (current_time - SUMMARY_CACHE["timestamp"] < CACHE_TTL):
-        return SUMMARY_CACHE["data"]
-
-    # 1. Fastest Growing Competitor
-    growth_query = """
-    WITH recent AS (
-        SELECT c.name, COUNT(*) AS cnt
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        WHERE ec.created_at >= NOW() - INTERVAL '30 days'
-        GROUP BY c.name
-    ),
-    previous AS (
-        SELECT c.name, COUNT(*) AS cnt
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        WHERE ec.created_at BETWEEN NOW() - INTERVAL '60 days' AND NOW() - INTERVAL '30 days'
-        GROUP BY c.name
-    )
-    SELECT r.name,
-    (r.cnt - COALESCE(p.cnt, 0)) AS growth
-    FROM recent r
-    LEFT JOIN previous p ON r.name = p.name
-    ORDER BY growth DESC
-    LIMIT 1;
-    """
-    try:
-        growth_res = db.execute(text(growth_query)).fetchone()
-        fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if growth_res else {"name": "N/A", "growth": 0}
-    except Exception as e:
-        logger.error(f"Error fetching growth: {e}")
-        fastest_growing = {"name": "N/A", "growth": 0}
-
-    # 2. Most Saturated Category
-    sat_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
-    FROM signals s
-    JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label
-    ORDER BY density DESC
-    LIMIT 1;
-    """
-    try:
-        sat_res = db.execute(text(sat_query)).fetchone()
-        saturation = {"theme": sat_res[0] if sat_res else "N/A", "level": "high"}
-    except Exception:
-        saturation = {"theme": "N/A", "level": "high"}
-
-    # 3. Top Opportunity Category
-    opp_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
-    FROM signals s
-    JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label
-    ORDER BY density ASC
-    LIMIT 1;
-    """
-    try:
-        opp_res = db.execute(text(opp_query)).fetchone()
-        opportunity = {"theme": opp_res[0] if opp_res else "N/A", "level": "low"}
-    except Exception:
-        opportunity = {"theme": "N/A", "level": "low"}
-
-    # 4. Clusters Tracked
-    clusters_query = """
-    SELECT COUNT(*) AS total_clusters FROM clusters;
-    """
-    try:
-        clusters_res = db.execute(text(clusters_query)).fetchone()
-        clusters_count = clusters_res[0] if clusters_res else 0
-    except Exception:
-        clusters_count = 0
-
-    result = {
-        "fastest_growing": fastest_growing,
-        "saturation": saturation,
-        "opportunity": opportunity,
-        "clusters": {"count": clusters_count}
-    }
-    
-    SUMMARY_CACHE["data"] = result
-    SUMMARY_CACHE["timestamp"] = current_time
-    
-    return result
+    # Fallback to computing and caching if missing
+    logger.info("Cache miss for summary_insights. Recomputing...")
+    data = compute_summary_insights(db)
+    new_cache = models.DashboardCache(key="summary_insights", data=data)
+    db.merge(new_cache)
+    db.commit()
+    return data
 
 @app.get("/api/competitor-analysis")
 def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):
-    # WHERE Clause based on selection
-    where_clause_ec = "WHERE c.name = :comp" if competitor != "ALL" else ""
-    where_clause_sig = "WHERE c.name = :comp" if competitor != "ALL" else ""
-    params = {"comp": competitor} if competitor != "ALL" else {}
-
-    # Trend Over Time
-    time_filter = "ec.created_at >= NOW() - INTERVAL '18 months'"
-    trend_where = f"{where_clause_ec} AND {time_filter}" if where_clause_ec else f"WHERE {time_filter}"
-
-    trend_query = f"""
-    SELECT 
-        c.name AS competitor,
-        TO_CHAR(DATE_TRUNC('month', ec.created_at), 'YYYY-MM') AS month,
-        COUNT(*) AS activity
-    FROM extracted_content ec
-    JOIN snapshots s ON ec.snapshot_id = s.id
-    JOIN competitors c ON s.competitor_id = c.id
-    {trend_where}
-    GROUP BY c.name, DATE_TRUNC('month', ec.created_at)
-    ORDER BY DATE_TRUNC('month', ec.created_at) ASC;
-    """
-    trend_res = db.execute(text(trend_query), params).fetchall()
-    trends = [{"competitor": row[0], "month": row[1], "activity": float(row[2])} for row in trend_res]
-
-    # Theme Distribution
-    theme_query = f"""
-    SELECT 
-        c.name AS competitor,
-        s.category,
-        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY c.name)), 2) AS percentage
-    FROM signals s
-    JOIN competitors c ON s.competitor_id = c.id
-    {where_clause_sig}
-    GROUP BY c.name, s.category;
-    """
-    theme_res = db.execute(text(theme_query), params).fetchall()
-    themes = [{"competitor": row[0], "category": row[1] if row[1] else "General", "percentage": float(row[2])} for row in theme_res]
-
-    # Positioning Map
-    pos_query = f"""
-    WITH counts AS (
-        SELECT c.name, COUNT(*) AS total
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    max_val AS (
-        SELECT MAX(total) AS max_total FROM counts
-    )
-    SELECT 
-        c.name,
-        ROUND((c.total * 10.0 / m.max_total), 2) AS activity_score
-    FROM counts c, max_val m;
-    """
-    pos_res = db.execute(text(pos_query), params).fetchall()
+    """Fetch Competitor Analysis from Persistent Cache with Fallback"""
+    cache_key = f"comp_analysis_{competitor}"
+    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == cache_key).first()
+    if cache_entry:
+        return cache_entry.data
     
-    # Mocking price_index and trust_score for scatter plot
-    mock_pos = {
-        "Urban Company": {"price_index": 8.5, "trust_score": 9.0},
-        "Housejoy": {"price_index": 6.0, "trust_score": 6.5},
-        "Sulekha": {"price_index": 4.0, "trust_score": 5.0}
-    }
-    
-    positioning = []
-    for row in pos_res:
-        comp_name = row[0]
-        pos_data = mock_pos.get(comp_name, {"price_index": 5.0, "trust_score": 5.0})
-        positioning.append({
-            "competitor": comp_name,
-            "activity_score": float(row[1]),
-            "price_index": pos_data["price_index"],
-            "trust_score": pos_data["trust_score"]
-        })
+    # Fallback to computing and caching if missing
+    logger.info(f"Cache miss for {cache_key}. Recomputing...")
+    data = compute_competitor_analysis(db, competitor)
+    new_cache = models.DashboardCache(key=cache_key, data=data)
+    db.merge(new_cache)
+    db.commit()
+    return data
 
-    # Whitespace Map
-    white_query = f"""
-    WITH competitor_scores AS (
-        SELECT
-            c.name AS competitor,
-            COUNT(ec.id) AS activity
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    normalized AS (
-        SELECT
-            competitor,
-            activity * 100.0 / MAX(activity) OVER () AS x
-        FROM competitor_scores
-    )
-    SELECT
-        competitor,
-        x,
-        RANDOM() * 100 AS y
-    FROM normalized;
-    """
-    white_res = db.execute(text(white_query), params).fetchall()
-    
-    whitespace = []
-    for row in white_res:
-         # Map quadrant zones via mock logic temporarily if derived
-         x_val = float(row[1])
-         y_val = float(row[2])
-         if y_val > 50 and x_val < 50:
-             quadrant = "BEST opportunity"
-         elif y_val > 50 and x_val >= 50:
-             quadrant = "Crowded"
-         elif y_val <= 50 and x_val < 50:
-             quadrant = "Weak"
-         else:
-             quadrant = "Avoid"
-
-         whitespace.append({
-             "competitor": row[0],
-             "x": round(x_val, 2),
-             "y": round(y_val, 2),
-             "quadrant": quadrant
-         })
-
-    # Competitor Strength
-    strength_query = f"""
-    WITH base AS (
-        SELECT
-            c.name AS competitor,
-            COUNT(ec.id) AS total_activity
-        FROM extracted_content ec
-        JOIN snapshots s ON ec.snapshot_id = s.id
-        JOIN competitors c ON s.competitor_id = c.id
-        {where_clause_ec}
-        GROUP BY c.name
-    ),
-    max_val AS (
-        SELECT MAX(total_activity) AS max_total FROM base
-    )
-    SELECT
-        b.competitor,
-        ROUND((b.total_activity * 10.0 / m.max_total), 2) AS activity_score
-    FROM base b, max_val m;
-    """
-    strength_res = db.execute(text(strength_query), params).fetchall()
-    
-    mock_dims = {
-        "Urban Company": {"price": 6, "quality": 9, "convenience": 8, "ai": 9},
-        "Housejoy": {"price": 8, "quality": 6, "convenience": 7, "ai": 4},
-        "Sulekha": {"price": 9, "quality": 5, "convenience": 6, "ai": 3}
-    }
-    
-    strength = []
-    for row in strength_res:
-        comp_name = row[0]
-        dims = mock_dims.get(comp_name, {"price": 5, "quality": 5, "convenience": 5, "ai": 5})
-        strength.append({
-            "competitor": comp_name,
-            "pricing": dims["price"],
-            "quality": dims["quality"],
-            "convenience": dims["convenience"],
-            "ai": dims["ai"],
-            "activity_score": float(row[1])
-        })
-
-    return {
-        "trend": trends,
-        "themes": themes,
-        "positioning": positioning,
-        "whitespace": whitespace,
-        "strength": strength
-    }
+@app.post("/api/refresh-cache")
+def trigger_cache_refresh(db: Session = Depends(get_db)):
+    """Force rebuild the entire dashboard cache"""
+    refresh_dashboard_cache(db)
+    return {"status": "success", "message": "Dashboard cache rebuilt"}
 
 @app.get("/api/charts/opportunity")
 def get_chart_opportunity(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -852,6 +628,257 @@ def get_competitor_suggestions(
         logger.error(f"Critical error in AI suggestions: {e}")
         return ["AI Processing Error", "Please try again later", "Check API Quota"]
 
+
+@app.websocket("/ws/simulate")
+async def simulate_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    # ── 1. LOAD REAL DATA FROM DATABASE ──
+    db = SessionLocal()
+    try:
+        # Fetch all competitors
+        competitors = db.query(models.Competitor).all()
+        competitor_names = [c.name for c in competitors] if competitors else ["Unknown Competitor"]
+        
+        # Fetch clusters with their real saturation and trend data
+        temp_engine = TemporalEngine(db)
+        real_saturations = temp_engine.calculate_saturation()
+        real_trends = temp_engine.calculate_trends()
+        
+        # Build cluster intelligence map
+        cluster_intel = {}
+        for s in real_saturations:
+            cid = s["cluster_id"]
+            cluster_intel[cid] = {
+                "label": s.get("cluster_label", "Unknown Theme"),
+                "saturation": s.get("saturation_score", 0.5),
+                "competitors_using": s.get("competitors_using", 1),
+                "total_competitors": s.get("total_competitors", 3),
+            }
+        for t in real_trends:
+            cid = t["cluster_id"]
+            if cid in cluster_intel:
+                cluster_intel[cid]["growth_rate"] = t.get("growth_rate", 0.0)
+                cluster_intel[cid]["trend"] = t.get("trend", "stable")
+                cluster_intel[cid]["signal_count"] = t.get("current_count", 0)
+        
+        # Pick the top clusters by saturation (most interesting for simulation)
+        sorted_clusters = sorted(cluster_intel.values(), key=lambda x: x.get("saturation", 0), reverse=True)
+        target_clusters = sorted_clusters[:8] if len(sorted_clusters) >= 8 else sorted_clusters
+        
+        # Load decision layer experiments (if available)
+        decision_experiments = []
+        try:
+            with open("decision_layer_output.json", "r") as f:
+                decision_experiments = json.load(f)
+        except Exception:
+            pass
+        
+        # ── 2. COMPUTE INITIAL CONDITIONS FROM REAL DATA ──
+        if target_clusters:
+            avg_saturation = sum(c.get("saturation", 0.5) for c in target_clusters) / len(target_clusters)
+            avg_growth = sum(c.get("growth_rate", 0.0) for c in target_clusters) / len(target_clusters)
+        else:
+            avg_saturation = 0.5
+            avg_growth = 0.0
+        
+        # Starting saturation is derived from REAL average saturation (scaled to 0-100)
+        sat = round(min(95, max(40, avg_saturation * 100)), 1)
+        # Starting differentiation is inversely related to saturation
+        diff = round(min(40, max(5, (1.0 - avg_saturation) * 50)), 1)
+        
+    except Exception as e:
+        logger.error(f"Failed to load real data for simulation: {e}")
+        competitor_names = ["Competitor A", "Competitor B"]
+        target_clusters = []
+        decision_experiments = []
+        sat = 75.0
+        diff = 20.0
+    finally:
+        db.close()
+    
+    # ── 3. BUILD DATA-DRIVEN STRATEGIES ──
+    max_iterations = 8
+    momentum = 0.0
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    
+    # Dynamically build strategies using real cluster & competitor names
+    rival_1 = competitor_names[0] if len(competitor_names) > 0 else "leading competitor"
+    rival_2 = competitor_names[1] if len(competitor_names) > 1 else "secondary competitor"
+    rival_3 = competitor_names[2] if len(competitor_names) > 2 else "emerging competitor"
+    
+    # Pick real cluster labels for contextual text
+    cl_labels = [c.get("label", "market segment")[:60] for c in target_clusters]
+    cl1 = cl_labels[0] if len(cl_labels) > 0 else "primary market segment"
+    cl2 = cl_labels[1] if len(cl_labels) > 1 else "secondary market segment"
+    cl3 = cl_labels[2] if len(cl_labels) > 2 else "emerging vertical"
+    
+    # Risk is derived from how many competitors are in that cluster
+    def cluster_risk(idx):
+        if idx < len(target_clusters):
+            c = target_clusters[idx]
+            using = c.get("competitors_using", 1)
+            total = c.get("total_competitors", 3)
+            return min(0.65, max(0.30, using / max(total, 1)))
+        return 0.45
+
+    strategies = [
+        {"name": f"Premium Positioning vs {rival_1}", "diff_boost": (18, 35), "sat_reduce": (8, 18), "risk": cluster_risk(0),
+         "success_text": f"Premium feature rollout resonated in '{cl1}'. {rival_1} cannot replicate the proprietary tech stack within this cycle. High-value segments shifting.",
+         "fail_text": f"Premium positioning in '{cl1}' backfired — {rival_1}'s brand loyalty proved too strong. Target audience perceives insufficient value delta."},
+        {"name": f"Aggressive Undercut in '{cl2[:30]}'", "diff_boost": (10, 22), "sat_reduce": (12, 25), "risk": cluster_risk(1),
+         "success_text": f"Price disruption in '{cl2}' forced {rival_2} into margin pressure. Budget-conscious users are migrating at scale.",
+         "fail_text": f"Price war triggered in '{cl2}' — {rival_2} matched pricing within 48 hours. Saturation intensified across all segments."},
+        {"name": f"Whitespace Niche: '{cl3[:30]}'", "diff_boost": (20, 40), "sat_reduce": (5, 15), "risk": cluster_risk(2),
+         "success_text": f"Captured underserved micro-segment '{cl3}'. Zero direct competition detected. First-mover advantage established.",
+         "fail_text": f"The niche '{cl3}' proved too narrow for sustainable growth. Customer acquisition cost exceeds lifetime value."},
+        {"name": "AI-Driven Personalization Engine", "diff_boost": (15, 30), "sat_reduce": (10, 20), "risk": 0.40,
+         "success_text": f"AI personalization deployed across user base. Engagement up 340%. {rival_1} and {rival_2} lack data infrastructure to replicate.",
+         "fail_text": f"Personalization model underfitting — users report irrelevant recommendations. {rival_1} already has a stronger data moat."},
+        {"name": f"Community-Led Growth vs {rival_2}", "diff_boost": (12, 25), "sat_reduce": (8, 16), "risk": 0.48,
+         "success_text": f"Organic community flywheel activated. User-generated content now drives 60% of new acquisition. Defensible moat established against {rival_2}.",
+         "fail_text": f"Community engagement stalled. Users prefer {rival_2}'s established ecosystem. Network effects working against us."},
+        {"name": f"Strategic Partnership Play", "diff_boost": (15, 28), "sat_reduce": (10, 22), "risk": 0.42,
+         "success_text": f"Partnership secured exclusive distribution channel in '{cl1}'. {rival_3} access blocked for 18-month exclusivity window.",
+         "fail_text": f"Partnership negotiations collapsed. {rival_1} secured the deal instead, strengthening their position in '{cl1}'."},
+        {"name": "Rapid Feature Innovation Sprint", "diff_boost": (18, 32), "sat_reduce": (6, 14), "risk": 0.52,
+         "success_text": f"Feature velocity outpaced all {len(competitor_names)} tracked competitors 3:1. Market perception shifted to innovation leader positioning.",
+         "fail_text": f"Feature bloat detected. Core product quality degraded. {rival_1} capitalized on our instability."},
+        {"name": f"Brand Narrative Overhaul", "diff_boost": (14, 26), "sat_reduce": (10, 20), "risk": 0.46,
+         "success_text": f"New brand narrative achieved viral resonance against {rival_1}. Share-of-voice increased 280%. Competitors forced to react defensively.",
+         "fail_text": f"Brand repositioning confused existing customer base. Trust metrics declined. {rival_2} exploited the transition gap."},
+    ]
+    
+    success_verdicts = [
+        f"The iterative simulation achieved market breakthrough against {', '.join(competitor_names[:3])}. Differentiation score exceeded 80%, establishing a defensible competitive moat across {len(target_clusters)} analyzed market clusters.",
+        "Simulation complete — SUCCESS. The agentic pivot engine identified a viable path through {attempts} strategic iterations. Final differentiation of {diff}% with saturation reduced to {sat}% indicates a strong, sustainable market position.",
+    ]
+    
+    failure_verdicts = [
+        f"SIMULATION EXHAUSTED: After {{attempts}} strategic pivots against {rival_1} and {rival_2}, the market proved too saturated for differentiation. All viable strategies were attempted but competitor reaction speed prevented breakthrough.",
+        "FATAL OUTCOME: The simulation ran {attempts} iterations without achieving escape velocity. Current saturation at {sat}% is unsustainable. The competitive landscape across {len_clusters} clusters is too dense for incremental strategies.".replace("{len_clusters}", str(len(target_clusters))),
+    ]
+
+    used_strategies = []
+
+    try:
+        # ── Stage 0: Data-Driven Initialization ──
+        init_desc = (
+            f"Loaded {len(target_clusters)} market clusters, {len(competitor_names)} competitors "
+            f"({', '.join(competitor_names[:3])}), and {len(decision_experiments)} experiment recommendations. "
+            f"Real-time market saturation: {sat}%. Starting differentiation baseline: {diff}%."
+        )
+        
+        await websocket.send_json({
+            "status": "RUNNING",
+            "iteration": 0,
+            "maxIterations": max_iterations,
+            "stageData": {
+                "id": 0,
+                "title": "Initializing with Real Market Data",
+                "desc": init_desc,
+            },
+            "chartPoint": {"month": month_names[0], "differentiation": round(diff), "saturation": round(sat)},
+            "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0}
+        })
+        
+        await asyncio.sleep(2.5)
+
+        for i in range(1, max_iterations + 1):
+            month = month_names[i % 12]
+            
+            # Pick a strategy we haven't used yet
+            available = [s for s in strategies if s["name"] not in used_strategies]
+            if not available:
+                available = strategies
+            strategy = random.choice(available)
+            used_strategies.append(strategy["name"])
+            
+            # ── Data-Driven Probability Engine ──
+            base_chance = 1.0 - strategy["risk"]
+            momentum_bonus = min(momentum * 0.08, 0.2)
+            saturation_penalty = max((sat - 70) * 0.005, 0)
+            success_chance = min(max(base_chance + momentum_bonus - saturation_penalty, 0.15), 0.85)
+            
+            roll = random.random()
+            succeeded = roll < success_chance
+            
+            if succeeded:
+                boost = random.randint(*strategy["diff_boost"])
+                reduction = random.randint(*strategy["sat_reduce"])
+                diff += boost
+                sat -= reduction
+                momentum += 0.5
+                title = f"Attempt {i}: {strategy['name']} ✓"
+                desc = strategy["success_text"]
+            else:
+                penalty = random.randint(2, 12)
+                increase = random.randint(3, 10)
+                diff -= penalty
+                sat += increase
+                momentum = max(momentum - 0.3, 0)
+                title = f"Attempt {i}: {strategy['name']} ✗"
+                desc = strategy["fail_text"] + " Pivoting to next strategy..."
+                
+            diff = max(5, min(100, diff))
+            sat = max(10, min(100, sat))
+            
+            # ── Win/Loss Evaluation ──
+            status = "RUNNING"
+            is_final = False
+            
+            if diff >= 80:
+                is_final = True
+                status = "SUCCESS"
+                title = "✦ Outcome: Market Domination"
+                desc = random.choice(success_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+            elif sat >= 95:
+                is_final = True
+                status = "FAILURE"
+                title = "✦ Outcome: Strategic Collapse"
+                desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+            elif i == max_iterations:
+                is_final = True
+                if diff >= 60:
+                    status = "SUCCESS"
+                    title = "✦ Outcome: Marginal Victory"
+                    desc = f"After {i} iterations against {rival_1} and {rival_2}, differentiation reached {round(diff)}% — sufficient for a defensible but narrow position. Continued monitoring recommended."
+                else:
+                    status = "FAILURE"
+                    title = "✦ Outcome: Exhaustion"
+                    desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+
+            await websocket.send_json({
+                "status": status,
+                "iteration": i,
+                "maxIterations": max_iterations,
+                "stageData": {
+                    "id": i,
+                    "title": title,
+                    "desc": desc,
+                },
+                "chartPoint": {"month": month, "differentiation": round(diff), "saturation": round(sat)},
+                "kpis": {
+                    "differentiation": round(diff), 
+                    "saturation": round(sat), 
+                    "persona_drift": round(momentum * 60), 
+                    "resonance": round(1.0 + (diff / 40), 1)
+                }
+            })
+
+            if is_final:
+                break
+                
+            await asyncio.sleep(3.0)
+            
+    except WebSocketDisconnect:
+        logger.info("Simulation websocket disconnected by client")
+    except Exception as e:
+        logger.error(f"Simulation WS error: {e}")
+        try:
+            await websocket.close()
+        except:
+            pass
 
 if __name__ == "__main__":
     import uvicorn

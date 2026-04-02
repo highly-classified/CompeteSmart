@@ -231,17 +231,28 @@ export default function Dashboard() {
           compsInTrend.add(item.competitor);
         }
 
-        // Apply 3-point moving average smoothing for visual stability
+        // Apply advanced smoothing and log-scaling for 4-year visual balance
         const sortedMonths = Object.keys(trendMap).sort();
         const smoothedData = sortedMonths.map((month, i, arr) => {
           const current = trendMap[month];
           const smoothed: any = { ...current };
           
           Array.from(compsInTrend).forEach(comp => {
-            const val = current[comp] || 0;
+            // Gap filling: If 0, try to average neighbors
+            let val = current[comp] || 0;
+            if (val === 0 && i > 0 && i < arr.length - 1) {
+              const pVal = trendMap[arr[i-1]][comp] || 0;
+              const nVal = trendMap[arr[i+1]][comp] || 0;
+              if (pVal > 0 && nVal > 0) val = (pVal + nVal) / 2;
+            }
+
+            // 3-point Moving Average
             const prev = i > 0 ? (trendMap[arr[i-1]][comp] !== undefined ? trendMap[arr[i-1]][comp] : val) : val;
             const next = i < arr.length - 1 ? (trendMap[arr[i+1]][comp] !== undefined ? trendMap[arr[i+1]][comp] : val) : val;
-            smoothed[comp] = parseFloat(((prev + val + next) / 3).toFixed(2));
+            const avg = (prev + val + next) / 3;
+
+            // Log-scaling: log(1 + activity) to normalize heights across competitors
+            smoothed[comp] = parseFloat(Math.log1p(avg).toFixed(3));
           });
           return smoothed;
         });
@@ -408,8 +419,8 @@ export default function Dashboard() {
             {/* Chart 1: Trend Over Time */}
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="mb-8">
-                <h3 className="font-bold text-xl text-white">Trend Over Time</h3>
-                <p className="text-zinc-500 text-xs mt-1">Evolving messaging clusters</p>
+                <h3 className="font-bold text-xl text-white">Momentum Over Time</h3>
+                <p className="text-zinc-500 text-[10px] uppercase tracking-widest mt-1 opacity-70">4-year activity evolution</p>
                 <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
                   Competitor Growth Trends
                 </div>
@@ -417,9 +428,22 @@ export default function Dashboard() {
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={analysisData ? analysisData.trend.data : MOCK_TREND_DATA}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                    <XAxis dataKey={analysisData ? "time" : "time"} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} opacity={0.1} />
+                    <XAxis 
+                      dataKey={analysisData ? "time" : "time"} 
+                      axisLine={false} 
+                      tickLine={false} 
+                      interval={6}
+                      tick={{ fontSize: 9, fill: axisColor, fontWeight: 600 }} 
+                    />
+                    <YAxis 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 9, fill: axisColor, fontWeight: 600 }}
+                      domain={[0, 'auto']}
+                      label={{ value: 'Activity Score', angle: -90, position: 'insideLeft', style: { fill: axisColor, fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }, offset: 10 }}
+                      width={45}
+                    />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
                     {(analysisData ? analysisData.trend.keys : MOCK_TREND_KEYS).map((key: string, i: number) => (
