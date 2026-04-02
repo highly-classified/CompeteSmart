@@ -7,6 +7,18 @@ from src import models
 
 logger = logging.getLogger("cache_manager")
 
+def clean_label(label: str) -> str:
+    """Natural label cleanup: Title Case, max 30 chars, no junk."""
+    if not label: return "General"
+    # Title Case
+    cleaned = label.title().strip()
+    # Remove junk (common in scraping fragments)
+    for junk in ["...", "Next", "View", "Details", "More"]:
+        cleaned = cleaned.replace(junk, "").strip()
+    # Length limit
+    return cleaned[:30]
+
+
 def refresh_dashboard_cache(db: Session):
     """
     Pre-computes all dashboard data and stores it in the DashboardCache table.
@@ -66,25 +78,26 @@ def compute_summary_insights(db: Session):
     growth_res = db.execute(text(growth_query)).fetchone()
     fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if growth_res else {"name": "N/A", "growth": 0}
 
-    # Saturation
+    # Saturation (Natural semantic clusters)
     sat_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
+    SELECT cl.label, COUNT(*) AS total
     FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label ORDER BY density DESC LIMIT 1;
+    WHERE cl.label IS NOT NULL
+    GROUP BY cl.label ORDER BY total DESC LIMIT 1;
     """
     sat_res = db.execute(text(sat_query)).fetchone()
-    saturation = {"theme": sat_res[0] if sat_res else "N/A", "level": "high"}
+    saturation = {"theme": clean_label(sat_res[0]) if sat_res else "N/A", "level": "high"}
 
-    # Opportunity
+    # Opportunity (Natural semantic clusters)
     opp_query = """
-    SELECT cl.label AS theme, COUNT(*) AS density
+    SELECT cl.label, COUNT(*) AS total
     FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE s.cluster_id IS NOT NULL
-    GROUP BY cl.label ORDER BY density ASC LIMIT 1;
+    WHERE cl.label IS NOT NULL
+    GROUP BY cl.label ORDER BY total ASC LIMIT 1;
     """
     opp_res = db.execute(text(opp_query)).fetchone()
-    opportunity = {"theme": opp_res[0] if opp_res else "N/A", "level": "low"}
+    opportunity = {"theme": clean_label(opp_res[0]) if opp_res else "N/A", "level": "low"}
+
 
     # Clusters
     clusters_res = db.execute(text("SELECT COUNT(*) FROM clusters;")).fetchone()
@@ -111,14 +124,48 @@ def compute_competitor_analysis(db: Session, competitor: str):
     trend_res = db.execute(text(trend_query), params).fetchall()
     trends = [{"competitor": r[0], "month": r[1], "activity": float(r[2])} for r in trend_res]
 
-    # Themes
+    # Themes (Aggregated by natural cluster labels)
+    where_base = "WHERE cl.label IS NOT NULL"
+    if competitor != "ALL":
+        where_base += " AND c.name = :comp"
+
     theme_query = f"""
-    SELECT c.name, s.category, ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY c.name)), 2)
-    FROM signals s JOIN competitors c ON s.competitor_id = c.id
-    {where_clause} GROUP BY 1, 2;
+    SELECT c.name, cl.label, COUNT(*)
+    FROM signals s 
+    JOIN competitors c ON s.competitor_id = c.id
+    JOIN clusters cl ON s.cluster_id = cl.id
+    {where_base}
+    GROUP BY 1, 2;
     """
+
     theme_res = db.execute(text(theme_query), params).fetchall()
-    themes = [{"competitor": r[0], "category": r[1] or "General", "percentage": float(r[2])} for r in theme_res]
+    
+    # Process and Limit
+    themes = []
+    comp_totals = {}
+    for r in theme_res:
+        comp_totals[r[0]] = comp_totals.get(r[0], 0) + r[2]
+
+    for r in theme_res:
+        comp_name = r[0]
+        label_raw = r[1]
+        count = r[2]
+        total = comp_totals[comp_name]
+        
+        themes.append({
+            "competitor": comp_name,
+            "category": clean_label(label_raw),
+            "percentage": round((count * 100.0 / total), 2)
+        })
+
+    # Limit per competitor to top 6
+    final_themes = []
+    for comp in (["Urban Company", "Housejoy", "Sulekha"] if competitor == "ALL" else [competitor]):
+        comp_themes = [t for t in themes if t["competitor"] == comp]
+        final_themes.extend(sorted(comp_themes, key=lambda x: x["percentage"], reverse=True)[:6])
+    
+    themes = final_themes
+
 
     # Pos
     pos_query = f"""
@@ -139,12 +186,23 @@ def compute_competitor_analysis(db: Session, competitor: str):
     white_res = db.execute(text(white_query), params).fetchall()
     whitespace = [{"name": r[0], "x": float(r[1]), "y": float(r[2])} for r in white_res]
 
-    # Strength
+    # Strength (Natural clusters per competitor)
+    where_base_str = "WHERE cl.label IS NOT NULL"
+    if competitor != "ALL":
+        where_base_str += " AND c.name = :comp"
+
     str_query = f"""
-    SELECT c.name, s.category, COUNT(*) FROM signals s JOIN competitors c ON s.competitor_id = c.id {where_clause} GROUP BY 1, 2;
+    SELECT c.name, cl.label, COUNT(*) 
+    FROM signals s 
+    JOIN competitors c ON s.competitor_id = c.id 
+    JOIN clusters cl ON s.cluster_id = cl.id
+    {where_base_str}
+    GROUP BY 1, 2;
     """
+
     str_res = db.execute(text(str_query), params).fetchall()
-    strength = [{"name": r[0], "category": r[1] or "Other", "score": float(r[2])} for r in str_res]
+    strength = [{"name": r[0], "category": clean_label(r[1]), "score": float(r[2])} for r in str_res]
+
 
     return {
         "trend": trends,
