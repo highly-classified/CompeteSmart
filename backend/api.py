@@ -406,20 +406,23 @@ def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_d
     params = {"comp": competitor} if competitor != "ALL" else {}
 
     # Trend Over Time
+    time_filter = "ec.created_at >= NOW() - INTERVAL '18 months'"
+    trend_where = f"{where_clause_ec} AND {time_filter}" if where_clause_ec else f"WHERE {time_filter}"
+
     trend_query = f"""
     SELECT 
         c.name AS competitor,
         TO_CHAR(DATE_TRUNC('month', ec.created_at), 'YYYY-MM') AS month,
-        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY DATE_TRUNC('month', ec.created_at))), 2) AS normalized_activity
+        COUNT(*) AS activity
     FROM extracted_content ec
     JOIN snapshots s ON ec.snapshot_id = s.id
     JOIN competitors c ON s.competitor_id = c.id
-    {where_clause_ec}
+    {trend_where}
     GROUP BY c.name, DATE_TRUNC('month', ec.created_at)
     ORDER BY DATE_TRUNC('month', ec.created_at) ASC;
     """
     trend_res = db.execute(text(trend_query), params).fetchall()
-    trends = [{"competitor": row[0], "month": row[1], "normalized_activity": float(row[2])} for row in trend_res]
+    trends = [{"competitor": row[0], "month": row[1], "activity": float(row[2])} for row in trend_res]
 
     # Theme Distribution
     theme_query = f"""
