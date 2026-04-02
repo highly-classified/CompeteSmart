@@ -103,24 +103,7 @@ const MOCK_DISTRIBUTION_DATA: DistributionPoint[] = [
   { name: "Trust & Safety", value: 8, fill: "#f472b6" },
 ];
 
-const MOCK_WHITESPACE_DATA: WhitespacePoint[] = [
-  { name: "AI Scheduling", x: 18, y: 88, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Eco-Friendly", x: 22, y: 74, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Senior Care", x: 30, y: 62, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Premium Deep Clean", x: 55, y: 72, fill: QUADRANT_FILLS["Crowded"] },
-  { name: "Budget Cleaning", x: 82, y: 38, fill: QUADRANT_FILLS["Avoid"] },
-  { name: "Same-Day Service", x: 65, y: 55, fill: QUADRANT_FILLS["Crowded"] },
-  { name: "Subscription Plans", x: 40, y: 45, fill: QUADRANT_FILLS["Weak"] },
-  { name: "B2B Office", x: 28, y: 80, fill: QUADRANT_FILLS["BEST opportunity"] },
-];
 
-const MOCK_COMPARISON_DATA: ComparisonPoint[] = [
-  { name: "UrbanCompany", pricing: 62, quality: 88, ai: 91, convenience: 78 },
-  { name: "Housejoy", pricing: 80, quality: 55, ai: 38, convenience: 65 },
-  { name: "Helpr", pricing: 58, quality: 72, ai: 44, convenience: 83 },
-  { name: "Zimmber", pricing: 90, quality: 40, ai: 22, convenience: 58 },
-  { name: "TaskBob", pricing: 50, quality: 80, ai: 55, convenience: 70 },
-];
 
 const MOCK_EXPERIMENTS: Experiment[] = [
   {
@@ -222,7 +205,7 @@ export default function Dashboard() {
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
   const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
-  const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[] } | null>(null);
+  const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[]; whitespace: any[]; strength: any[] } | null>(null);
 
   useEffect(() => {
     fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
@@ -266,10 +249,29 @@ export default function Dashboard() {
             fill: COMP_BRAND_COLORS[p.competitor] || "#60a5fa"
         }));
 
+        const processedWhitespace = data.whitespace.map((w: any) => ({
+            name: w.competitor,
+            x: w.x,
+            y: w.y,
+            quadrant: w.quadrant,
+            fill: QUADRANT_FILLS[w.quadrant] || "#60a5fa"
+        }));
+
+        const processedStrength = data.strength.map((s: any) => ({
+            name: s.competitor,
+            pricing: s.pricing,
+            quality: s.quality,
+            convenience: s.convenience,
+            ai: s.ai,
+            activity_score: s.activity_score
+        }));
+
         setAnalysisData({
           trend: { data: Object.values(trendMap), keys: Array.from(compsInTrend) },
           themes: processedThemes,
-          positioning: processedPositioning
+          positioning: processedPositioning,
+          whitespace: processedWhitespace,
+          strength: processedStrength
         });
       })
       .catch((e) => console.error(e));
@@ -281,7 +283,7 @@ export default function Dashboard() {
   // Derived summary values from mock data
   const fastestGrowingCluster = MOCK_TREND_KEYS[0]; // AI & Automation
   const highestSaturation = MOCK_DISTRIBUTION_DATA[0].name; // Price & Value
-  const topOpportunity = MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
+  const topOpportunity = analysisData?.whitespace?.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
 
   // ─────────────────────────────────────────
   // Main render
@@ -500,7 +502,7 @@ export default function Dashboard() {
                   <p className="text-zinc-500 text-xs mt-1">Highest ROI focus areas</p>
                 </div>
                 <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
-                  Target: {MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name}
+                  Target: {topOpportunity}
                 </div>
               </div>
               <div className="h-72 w-full relative">
@@ -515,7 +517,7 @@ export default function Dashboard() {
                     <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
                     <ZAxis range={[300, 800]} />
                     <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
-                    {MOCK_WHITESPACE_DATA.map((entry, index) => (
+                    {(analysisData ? analysisData.whitespace : []).map((entry: any, index: number) => (
                       <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
                     ))}
                   </ScatterChart>
@@ -542,7 +544,7 @@ export default function Dashboard() {
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={MOCK_COMPARISON_DATA} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                  <BarChart data={analysisData ? analysisData.strength : []} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />

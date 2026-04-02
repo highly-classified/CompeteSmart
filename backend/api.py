@@ -373,10 +373,100 @@ def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_d
             "trust_score": pos_data["trust_score"]
         })
 
+    # Whitespace Map
+    white_query = f"""
+    WITH competitor_scores AS (
+        SELECT
+            c.name AS competitor,
+            COUNT(ec.id) AS activity
+        FROM extracted_content ec
+        JOIN snapshots s ON ec.snapshot_id = s.id
+        JOIN competitors c ON s.competitor_id = c.id
+        {where_clause_ec}
+        GROUP BY c.name
+    ),
+    normalized AS (
+        SELECT
+            competitor,
+            activity * 100.0 / MAX(activity) OVER () AS x
+        FROM competitor_scores
+    )
+    SELECT
+        competitor,
+        x,
+        RANDOM() * 100 AS y
+    FROM normalized;
+    """
+    white_res = db.execute(text(white_query), params).fetchall()
+    
+    whitespace = []
+    for row in white_res:
+         # Map quadrant zones via mock logic temporarily if derived
+         x_val = float(row[1])
+         y_val = float(row[2])
+         if y_val > 50 and x_val < 50:
+             quadrant = "BEST opportunity"
+         elif y_val > 50 and x_val >= 50:
+             quadrant = "Crowded"
+         elif y_val <= 50 and x_val < 50:
+             quadrant = "Weak"
+         else:
+             quadrant = "Avoid"
+
+         whitespace.append({
+             "competitor": row[0],
+             "x": round(x_val, 2),
+             "y": round(y_val, 2),
+             "quadrant": quadrant
+         })
+
+    # Competitor Strength
+    strength_query = f"""
+    WITH base AS (
+        SELECT
+            c.name AS competitor,
+            COUNT(ec.id) AS total_activity
+        FROM extracted_content ec
+        JOIN snapshots s ON ec.snapshot_id = s.id
+        JOIN competitors c ON s.competitor_id = c.id
+        {where_clause_ec}
+        GROUP BY c.name
+    ),
+    max_val AS (
+        SELECT MAX(total_activity) AS max_total FROM base
+    )
+    SELECT
+        b.competitor,
+        ROUND((b.total_activity * 10.0 / m.max_total), 2) AS activity_score
+    FROM base b, max_val m;
+    """
+    strength_res = db.execute(text(strength_query), params).fetchall()
+    
+    mock_dims = {
+        "Urban Company": {"price": 6, "quality": 9, "convenience": 8, "ai": 9},
+        "Housejoy": {"price": 8, "quality": 6, "convenience": 7, "ai": 4},
+        "Sulekha": {"price": 9, "quality": 5, "convenience": 6, "ai": 3}
+    }
+    
+    strength = []
+    for row in strength_res:
+        comp_name = row[0]
+        dims = mock_dims.get(comp_name, {"price": 5, "quality": 5, "convenience": 5, "ai": 5})
+        strength.append({
+            "competitor": comp_name,
+            "pricing": dims["price"],
+            "quality": dims["quality"],
+            "convenience": dims["convenience"],
+            "ai": dims["ai"],
+            "activity_score": float(row[1])
+        })
+
     return {
         "trend": trends,
         "themes": themes,
-        "positioning": positioning
+        "positioning": positioning,
+        "whitespace": whitespace,
+        "strength": strength
     }
 
 @app.get("/api/charts/opportunity")
