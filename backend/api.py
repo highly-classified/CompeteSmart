@@ -18,8 +18,19 @@ import logging
 import sys
 import asyncio
 import random
+import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
 from src.execution_copilot import chat_with_experiment
 
+SUMMARY_CACHE = {
+    "data": None,
+    "timestamp": 0
+}
+CACHE_TTL = 300  # 5 minutes
 # Configure logging to see progress in Render dashboard
 logging.basicConfig(
     level=logging.INFO,
@@ -306,7 +317,11 @@ def get_final_insight_summary(cluster_id: str, db: Session = Depends(get_db), us
 
 @app.get("/api/summary-insights")
 def get_summary_insights(db: Session = Depends(get_db)):
-    """Dynamic Executive Summary Cards"""
+    """Dynamic Executive Summary Cards with Caching"""
+    
+    current_time = time.time()
+    if SUMMARY_CACHE["data"] and (current_time - SUMMARY_CACHE["timestamp"] < CACHE_TTL):
+        return SUMMARY_CACHE["data"]
 
     # 1. Fastest Growing Competitor
     growth_query = """
@@ -342,33 +357,35 @@ def get_summary_insights(db: Session = Depends(get_db)):
 
     # 2. Most Saturated Category
     sat_query = """
-    SELECT s.category, COUNT(*) AS total
+    SELECT cl.label AS theme, COUNT(*) AS density
     FROM signals s
-    WHERE s.category IS NOT NULL AND s.category != ''
-    GROUP BY s.category
-    ORDER BY total DESC
+    JOIN clusters cl ON s.cluster_id = cl.id
+    WHERE s.cluster_id IS NOT NULL
+    GROUP BY cl.label
+    ORDER BY density DESC
     LIMIT 1;
     """
     try:
         sat_res = db.execute(text(sat_query)).fetchone()
-        saturation = {"category": sat_res[0] if sat_res else "N/A", "level": "high"}
+        saturation = {"theme": sat_res[0] if sat_res else "N/A", "level": "high"}
     except Exception:
-        saturation = {"category": "N/A", "level": "high"}
+        saturation = {"theme": "N/A", "level": "high"}
 
     # 3. Top Opportunity Category
     opp_query = """
-    SELECT s.category, COUNT(*) AS total
+    SELECT cl.label AS theme, COUNT(*) AS density
     FROM signals s
-    WHERE s.category IS NOT NULL AND s.category != ''
-    GROUP BY s.category
-    ORDER BY total ASC
+    JOIN clusters cl ON s.cluster_id = cl.id
+    WHERE s.cluster_id IS NOT NULL
+    GROUP BY cl.label
+    ORDER BY density ASC
     LIMIT 1;
     """
     try:
         opp_res = db.execute(text(opp_query)).fetchone()
-        opportunity = {"category": opp_res[0] if opp_res else "N/A", "level": "low"}
+        opportunity = {"theme": opp_res[0] if opp_res else "N/A", "level": "low"}
     except Exception:
-        opportunity = {"category": "N/A", "level": "low"}
+        opportunity = {"theme": "N/A", "level": "low"}
 
     # 4. Clusters Tracked
     clusters_query = """
@@ -380,12 +397,17 @@ def get_summary_insights(db: Session = Depends(get_db)):
     except Exception:
         clusters_count = 0
 
-    return {
+    result = {
         "fastest_growing": fastest_growing,
         "saturation": saturation,
         "opportunity": opportunity,
         "clusters": {"count": clusters_count}
     }
+    
+    SUMMARY_CACHE["data"] = result
+    SUMMARY_CACHE["timestamp"] = current_time
+    
+    return result
 
 @app.get("/api/competitor-analysis")
 def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_db)):
@@ -395,20 +417,23 @@ def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_d
     params = {"comp": competitor} if competitor != "ALL" else {}
 
     # Trend Over Time
+    time_filter = "ec.created_at >= NOW() - INTERVAL '18 months'"
+    trend_where = f"{where_clause_ec} AND {time_filter}" if where_clause_ec else f"WHERE {time_filter}"
+
     trend_query = f"""
     SELECT 
         c.name AS competitor,
         TO_CHAR(DATE_TRUNC('month', ec.created_at), 'YYYY-MM') AS month,
-        ROUND((COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY DATE_TRUNC('month', ec.created_at))), 2) AS normalized_activity
+        COUNT(*) AS activity
     FROM extracted_content ec
     JOIN snapshots s ON ec.snapshot_id = s.id
     JOIN competitors c ON s.competitor_id = c.id
-    {where_clause_ec}
+    {trend_where}
     GROUP BY c.name, DATE_TRUNC('month', ec.created_at)
     ORDER BY DATE_TRUNC('month', ec.created_at) ASC;
     """
     trend_res = db.execute(text(trend_query), params).fetchall()
-    trends = [{"competitor": row[0], "month": row[1], "normalized_activity": float(row[2])} for row in trend_res]
+    trends = [{"competitor": row[0], "month": row[1], "activity": float(row[2])} for row in trend_res]
 
     # Theme Distribution
     theme_query = f"""
@@ -749,9 +774,16 @@ def get_user_profile(db: Session = Depends(get_db), user_id: str = Depends(get_c
     return profile
 
 @app.get("/api/competitors/suggestions")
-def get_competitor_suggestions(company_name: str, industry: Optional[str] = None):
+def get_competitor_suggestions(
+    company_name: str, 
+    industry: Optional[str] = None, 
+    location: Optional[str] = None, 
+    business_type: Optional[str] = "saas"
+):
     """
-    Uses Gemini to suggest competitors based on company name and industry.
+    Uses Gemini to suggest a strategic mix of 3 competitors: 
+    1 Industry Leader + 2 Direct Peer-Level Companies.
+    Considers 'location' for local businesses and 'saas' priority for global products.
     """
     try:
         import google.generativeai as genai
@@ -760,20 +792,71 @@ def get_competitor_suggestions(company_name: str, industry: Optional[str] = None
             return ["Competitor A", "Competitor B", "Competitor C"] # Fallback
             
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        prompt = f"Suggest 5 direct competitors for a company named '{company_name}'"
-        if industry:
-            prompt += f" in the {industry} industry."
-        prompt += " Provide ONLY the names of the competitors as a comma-separated list."
+        # Model ladder to handle quota limits: 3.1 Pro first, then 3.1 Flash-Lite
+        model_names = ['models/gemini-3.1-pro-preview', 'models/gemini-3.1-flash-lite-preview']
+        response = None
+        last_error = None
         
-        response = model.generate_content(prompt)
-        # Clean response and convert to list
-        names = [n.strip() for n in response.text.split(",") if n.strip()]
-        return names[:5]
+        for m_name in model_names:
+            try:
+                model = genai.GenerativeModel(m_name)
+                # Build a sophisticated prompt
+                context = f"Company: '{company_name}'"
+                if industry: context += f", Industry: '{industry}'"
+                if location: context += f", Location: '{location}'"
+                
+                prompt = f"""
+                Analyze the company: {context}.
+                Business Model Focus: {business_type.upper()}.
+
+                TASK: Suggest exactly 3 direct competitors.
+                
+                CRITICAL RULES:
+                1. If '{company_name}' is a Startup, provide:
+                   - 1 Top Industry Leader (giant rival).
+                   - 2 Strategic Peers (same level startups/rivals).
+                2. If model is 'LOCAL', prioritize competitors in '{location or 'their area'}'.
+                3. If model is 'SAAS', prioritize global rivals.
+                4. Focus on direct rivals fighting for the same customers.
+                5. OUTPUT FORMAT: Provide ONLY the names in a single line, separated by commas. 
+                   Example: Google, Microsoft, Amazon
+                   NO intro, NO descriptions, NO numbering, NO bolding.
+                """
+                
+                response = model.generate_content(prompt)
+                if response and response.text:
+                    break # Success!
+            except Exception as e:
+                last_error = str(e)
+                logger.warning(f"Model {m_name} failed: {e}")
+                continue
+                
+        if not response:
+            logger.error(f"All Gemini models failed. Last error: {last_error}")
+            return ["Competitor Look-up Failed", "Checking Connection...", "Try Manual Entry"]
+
+        text_response = response.text.strip()
+        
+        # Clean response: Handle common AI prefixes
+        if ":" in text_response and len(text_response.split(":")[0]) < 40:
+            text_response = text_response.split(":", 1)[1].strip()
+            
+        # Convert to list and clean each name (strip markdown asterisks, numbers, etc.)
+        import re
+        names = []
+        for n in text_response.split(","):
+            # Regex to strip leading numbers, dots, dashes, and whitespace
+            clean_name = re.sub(r'^[\d\.\-\s\*]+', '', n.strip())
+            # Strip trailing markdown artifacts
+            clean_name = clean_name.strip(" *#_")
+            if clean_name:
+                names.append(clean_name)
+        
+        return names[:3]
     except Exception as e:
-        logger.error(f"Error getting suggestions: {e}")
-        return ["Competitor X", "Competitor Y", "Competitor Z"]
+        logger.error(f"Critical error in AI suggestions: {e}")
+        return ["AI Processing Error", "Please try again later", "Check API Quota"]
 
 
 @app.websocket("/ws/simulate")

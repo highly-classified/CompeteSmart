@@ -209,14 +209,14 @@ export default function Dashboard() {
   const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/summary-insights")
+    fetch("http://localhost:8000/api/summary-insights")
       .then(res => res.json())
       .then(setSummary)
       .catch(e => console.error("Summary fetch error", e));
   }, []);
 
   useEffect(() => {
-    fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
+    fetch(`http://localhost:8000/api/competitor-analysis?competitor=${selectedCompetitor}`)
       .then((res) => {
         if (!res.ok) throw new Error("API error");
         return res.json();
@@ -227,9 +227,24 @@ export default function Dashboard() {
         const compsInTrend = new Set<string>();
         for (const item of data.trend) {
           if (!trendMap[item.month]) trendMap[item.month] = { time: item.month };
-          trendMap[item.month][item.competitor] = item.normalized_activity;
+          trendMap[item.month][item.competitor] = item.activity;
           compsInTrend.add(item.competitor);
         }
+
+        // Apply 3-point moving average smoothing for visual stability
+        const sortedMonths = Object.keys(trendMap).sort();
+        const smoothedData = sortedMonths.map((month, i, arr) => {
+          const current = trendMap[month];
+          const smoothed: any = { ...current };
+          
+          Array.from(compsInTrend).forEach(comp => {
+            const val = current[comp] || 0;
+            const prev = i > 0 ? (trendMap[arr[i-1]][comp] !== undefined ? trendMap[arr[i-1]][comp] : val) : val;
+            const next = i < arr.length - 1 ? (trendMap[arr[i+1]][comp] !== undefined ? trendMap[arr[i+1]][comp] : val) : val;
+            smoothed[comp] = parseFloat(((prev + val + next) / 3).toFixed(2));
+          });
+          return smoothed;
+        });
 
         // Pivot themes for grouping if ALL, else straightforward
         let processedThemes = [];
@@ -275,7 +290,7 @@ export default function Dashboard() {
         }));
 
         setAnalysisData({
-          trend: { data: Object.values(trendMap), keys: Array.from(compsInTrend) },
+          trend: { data: smoothedData, keys: Array.from(compsInTrend) },
           themes: processedThemes,
           positioning: processedPositioning,
           whitespace: processedWhitespace,
@@ -291,8 +306,8 @@ export default function Dashboard() {
   // Derived summary values from dynamic API
   const fastestGrowingName = summary?.fastest_growing?.name || "Loading...";
   const fastestGrowingGrowth = summary?.fastest_growing?.growth || 0;
-  const highestSaturation = summary?.saturation?.category || "Loading...";
-  const topOpportunity = summary?.opportunity?.category || "Loading...";
+  const highestSaturation = summary?.saturation?.theme || "Loading...";
+  const topOpportunity = summary?.opportunity?.theme || "Loading...";
   const trackedClusters = summary?.clusters?.count || 0;
 
   // ─────────────────────────────────────────
@@ -396,7 +411,7 @@ export default function Dashboard() {
                 <h3 className="font-bold text-xl text-white">Trend Over Time</h3>
                 <p className="text-zinc-500 text-xs mt-1">Evolving messaging clusters</p>
                 <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                  Rising: {MOCK_TREND_KEYS[0]}
+                  Competitor Growth Trends
                 </div>
               </div>
               <div className="h-64 w-full">
@@ -413,9 +428,9 @@ export default function Dashboard() {
                         type="monotone"
                         dataKey={key}
                         stroke={COMP_BRAND_COLORS[key] || CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
-                        strokeWidth={3}
-                        dot={{ r: 0 }}
-                        activeDot={{ r: 5, strokeWidth: 0 }}
+                        strokeWidth={4}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}
                   </LineChart>
