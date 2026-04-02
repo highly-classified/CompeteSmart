@@ -15,9 +15,13 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.models import Competitor, Snapshot, ExtractedContent, Signal, Cluster, VectorEmbedding, Trend
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 import google.generativeai as genai
-genai.configure(api_key="AIzaSyChXw2gbfc7t341rBp6XvJcUlc7g7XvHwo")
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 def hash_content(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()

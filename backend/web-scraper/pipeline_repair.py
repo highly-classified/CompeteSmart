@@ -12,10 +12,14 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.models import Competitor, Snapshot, ExtractedContent, Signal, Cluster, VectorEmbedding, Trend
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 import google.generativeai as genai
-genai.configure(api_key="AIzaSyChXw2gbfc7t341rBp6XvJcUlc7g7XvHwo")
-model_text = genai.GenerativeModel('gemini-2.5-flash')
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+model_text = genai.GenerativeModel('models/gemini-3.1-flash-lite-preview')
 
 def create_embeddings(text):
     try:

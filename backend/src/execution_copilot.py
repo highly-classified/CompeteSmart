@@ -8,8 +8,8 @@ load_dotenv()
 
 def chat_with_experiment(experiment_text: str, user_query: str, chat_history: list = None, cluster_id: str = None) -> str:
     """
-    Acts as a Market Intelligence Execution Copilot using Gemini Pro.
-    Provides step-by-step curated flows based on market signals and trust layer data.
+    Acts as a Market Intelligence Execution Strategy Consultant using Gemini 3.1 Flash-Lite.
+    Provides deep implementation handbooks and instant tactical answers.
     """
     if chat_history is None:
         chat_history = []
@@ -42,8 +42,8 @@ TRUST LAYER ANALYSIS:
             print(f"Warning: Failed to fetch trust data: {e}")
 
     # 2. System Prompt
-    system_instruction = f"""You are the CompeteSmart Execution Copilot, an elite market strategy AI.
-Your goal is to turn market intelligence into a step-by-step execution plan for the user.
+    system_instruction = f"""You are the CompeteSmart Execution Strategy Consultant, an elite AI specialized in operationalizing market intelligence.
+Your goal is to provide the user with a "COMPLETE IMPLEMENTATION HANDBOOK" for their chosen experiment and answer follow-up logistics questions with instant, tactical precision.
 
 CHOSEN EXPERIMENT:
 "{experiment_text}"
@@ -54,16 +54,18 @@ RELEVANT MARKET SIGNALS:
 {context_signals}
 
 OPERATIONAL GUIDELINES:
-1. If the user has just selected an experiment (or if this is the start of the discussion for it), provide a "STEP-BY-STEP CURATED FLOW" on how to carry it out.
-2. The flow must be tactical, including:
-   - Phase 1: Setup & Data Baseline
-   - Phase 2: Messaging/Pricing Deployment
-   - Phase 3: Monitoring & Pivot Points
-3. Integrate the 'Market Signals' to justify specific steps.
-4. Use the 'Trust Layer Analysis' to flag risks they must avoid during execution.
-5. Keep responses structured (use bolding, bullet points, and clear headers).
-6. After the step-by-step guide, invite the user to ask specific questions about the logistics or risks.
-7. Be concise but extremely insightful.
+1. INITIAL HANDBOOK: If the user has just started the session or selected an experiment, output a comprehensive implementation guide with THESE EXACT HEADERS:
+   - ## 🎯 Executive Summary: Why this works based on market signals.
+   - ## 🗺️ Tactical Roadmap: A clear Phase 1, 2, and 3 timeline.
+   - ## 🛠️ Resource Requirements: What tools, data, or team skills are needed.
+   - ## 📈 KPI Tracking: Exactly which metrics to monitor to measure success.
+   - ## ⚠️ Risk Mitigation: Specific actions to avoid based on the Trust Layer Analysis.
+
+2. INSTANT FOLLOW-UPS: For any subsequent questions, provide immediate, specific, and actionable advice. Refer back to the relevant phase (Phase 1, 2, or 3) of the handbook you just generated if necessary. Do not repeat the whole handbook; focus only on the user's specific query.
+
+3. STYLE: Use professional, authoritative language. Use bolding and structured lists for readability. Always justify your tactical advice using the 'RELEVANT MARKET SIGNALS' provided.
+
+4. BREADTH: If the user asks about the 'CompeteSmart' tool itself, explain that we use real-time web scraping, vector embeddings (pgvector), and LLM-driven clustering to identify these opportunities.
 """
 
     # 3. Gemini Chat Initialization
@@ -79,7 +81,11 @@ OPERATIONAL GUIDELINES:
         else:
             print("Warning: GEMINI_API_KEY not found in environment.")
             
-        model = genai.GenerativeModel('gemini-2.5-flash')
+        # Using the ultra-fast 3.1 Flash-Lite model with dedicated system instructions
+        model = genai.GenerativeModel(
+            model_name='models/gemini-3.1-flash-lite-preview',
+            system_instruction=system_instruction
+        )
         
         # Convert history format to Gemini's format
         gemini_history = []
@@ -87,13 +93,11 @@ OPERATIONAL GUIDELINES:
             role = "user" if msg["role"] == "user" else "model"
             gemini_history.append({"parts": [{"text": msg["content"]}], "role": role})
 
-        # Prepend system instruction as the first turn or instruction
-        # (Gemini 1.5 prefers it in the system_instruction parameter or as first message)
+        # Start chat with history
         chat = model.start_chat(history=gemini_history)
         
-        full_query = f"{system_instruction}\n\nUSER QUERY:\n{user_query}"
-        
-        response = chat.send_message(full_query)
+        # Send only the user query, as the system instruction is already set in the model
+        response = chat.send_message(user_query)
         return response.text
     except Exception as e:
-        return f"Gemini Error: {str(e)}"
+        return f"Gemini Implementation Error: {str(e)}"
