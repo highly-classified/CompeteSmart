@@ -14,24 +14,45 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
+import logging
+import sys
 from src.execution_copilot import chat_with_experiment
 
-# Note: Ensure the `vector` extension exists in PostgreSQL before making tables.
-# CREATE EXTENSION IF NOT EXISTS vector;
-try:
-    with engine.connect() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        conn.commit()
-    models.Base.metadata.create_all(bind=engine)
-except Exception as e:
-    print(f"Database initialization warning: {e}")
+# Configure logging to see progress in Render dashboard
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("api")
 
 app = FastAPI(title="CompeteSmart Intelligence API")
 
+@app.on_event("startup")
+def startup_db():
+    logger.info("Initializing database...")
+    try:
+        with engine.connect() as conn:
+            # Ensure the `vector` extension exists in PostgreSQL
+            logger.info("Checking for pgvector extension...")
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+            conn.commit()
+        logger.info("Creating tables if they don't exist...")
+        models.Base.metadata.create_all(bind=engine)
+        logger.info("Database initialization complete.")
+    except Exception as e:
+        logger.error(f"Database initialization warning: {e}")
+
 # Allow the Next.js frontend to call this API
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://compete-smart.vercel.app"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -398,3 +419,12 @@ def copilot_chat(request: CopilotChatRequest):
         return CopilotChatResponse(response=response_text)
     except Exception as e:
         return CopilotChatResponse(response=f"Copilot error: {str(e)}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Render provides the port in the PORT environment variable
+    port = int(os.environ.get("PORT", 8000))
+    logger.info(f"Starting uvicorn on 0.0.0.0:{port}")
+    # Bind to 0.0.0.0 so the service is accessible externally
+    uvicorn.run("api:app", host="0.0.0.0", port=port, log_level="info")
