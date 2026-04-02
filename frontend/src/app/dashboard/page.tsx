@@ -25,6 +25,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
+import { useEffect } from "react";
 
 // ─────────────────────────────────────────────
 // Types
@@ -51,6 +52,11 @@ interface Experiment {
 // ─────────────────────────────────────────────
 
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
+const COMP_BRAND_COLORS: Record<string, string> = {
+  "Urban Company": "#a78bfa", // Purple
+  "Housejoy": "#34d399", // Green
+  "Sulekha": "#fbbf24", // Yellow
+};
 const PIE_COLORS = ["#f87171", "#60a5fa", "#34d399", "#a78bfa", "#f472b6"];
 const COMPETITOR_COLORS = {
   pricing: "#f87171",
@@ -97,24 +103,7 @@ const MOCK_DISTRIBUTION_DATA: DistributionPoint[] = [
   { name: "Trust & Safety", value: 8, fill: "#f472b6" },
 ];
 
-const MOCK_WHITESPACE_DATA: WhitespacePoint[] = [
-  { name: "AI Scheduling", x: 18, y: 88, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Eco-Friendly", x: 22, y: 74, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Senior Care", x: 30, y: 62, fill: QUADRANT_FILLS["BEST opportunity"] },
-  { name: "Premium Deep Clean", x: 55, y: 72, fill: QUADRANT_FILLS["Crowded"] },
-  { name: "Budget Cleaning", x: 82, y: 38, fill: QUADRANT_FILLS["Avoid"] },
-  { name: "Same-Day Service", x: 65, y: 55, fill: QUADRANT_FILLS["Crowded"] },
-  { name: "Subscription Plans", x: 40, y: 45, fill: QUADRANT_FILLS["Weak"] },
-  { name: "B2B Office", x: 28, y: 80, fill: QUADRANT_FILLS["BEST opportunity"] },
-];
 
-const MOCK_COMPARISON_DATA: ComparisonPoint[] = [
-  { name: "UrbanCompany", pricing: 62, quality: 88, ai: 91, convenience: 78 },
-  { name: "Housejoy", pricing: 80, quality: 55, ai: 38, convenience: 65 },
-  { name: "Helpr", pricing: 58, quality: 72, ai: 44, convenience: 83 },
-  { name: "Zimmber", pricing: 90, quality: 40, ai: 22, convenience: 58 },
-  { name: "TaskBob", pricing: 50, quality: 80, ai: 55, convenience: 70 },
-];
 
 const MOCK_EXPERIMENTS: Experiment[] = [
   {
@@ -215,13 +204,111 @@ export default function Dashboard() {
   const [experiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
+  const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
+  const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[]; whitespace: any[]; strength: any[] } | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("http://localhost:8000/api/summary-insights")
+      .then(res => res.json())
+      .then(setSummary)
+      .catch(e => console.error("Summary fetch error", e));
+  }, []);
+
+  useEffect(() => {
+    fetch(`http://localhost:8000/api/competitor-analysis?competitor=${selectedCompetitor}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("API error");
+        return res.json();
+      })
+      .then((data) => {
+        // Transform trend data into Recharts format (pivot by month)
+        const trendMap: Record<string, any> = {};
+        const compsInTrend = new Set<string>();
+        for (const item of data.trend) {
+          if (!trendMap[item.month]) trendMap[item.month] = { time: item.month };
+          trendMap[item.month][item.competitor] = item.activity;
+          compsInTrend.add(item.competitor);
+        }
+
+        // Apply 3-point moving average smoothing for visual stability
+        const sortedMonths = Object.keys(trendMap).sort();
+        const smoothedData = sortedMonths.map((month, i, arr) => {
+          const current = trendMap[month];
+          const smoothed: any = { ...current };
+          
+          Array.from(compsInTrend).forEach(comp => {
+            const val = current[comp] || 0;
+            const prev = i > 0 ? (trendMap[arr[i-1]][comp] !== undefined ? trendMap[arr[i-1]][comp] : val) : val;
+            const next = i < arr.length - 1 ? (trendMap[arr[i+1]][comp] !== undefined ? trendMap[arr[i+1]][comp] : val) : val;
+            smoothed[comp] = parseFloat(((prev + val + next) / 3).toFixed(2));
+          });
+          return smoothed;
+        });
+
+        // Pivot themes for grouping if ALL, else straightforward
+        let processedThemes = [];
+        if (selectedCompetitor === "ALL") {
+            const themeMap: Record<string, any> = {};
+            for (const item of data.themes) {
+                if (!themeMap[item.category]) themeMap[item.category] = { category: item.category };
+                themeMap[item.category][item.competitor] = item.percentage;
+            }
+            processedThemes = Object.values(themeMap);
+        } else {
+            processedThemes = data.themes.map((t: any, i: number) => ({
+                name: t.category,
+                value: t.percentage,
+                fill: PIE_COLORS[i % PIE_COLORS.length]
+            }));
+        }
+
+        // Positioning
+        const processedPositioning = data.positioning.map((p: any) => ({
+            name: p.competitor,
+            x: p.price_index,
+            y: p.trust_score,
+            z: p.activity_score,
+            fill: COMP_BRAND_COLORS[p.competitor] || "#60a5fa"
+        }));
+
+        const processedWhitespace = data.whitespace.map((w: any) => ({
+            name: w.competitor,
+            x: w.x,
+            y: w.y,
+            quadrant: w.quadrant,
+            fill: QUADRANT_FILLS[w.quadrant] || "#60a5fa"
+        }));
+
+        const processedStrength = data.strength.map((s: any) => ({
+            name: s.competitor,
+            pricing: s.pricing,
+            quality: s.quality,
+            convenience: s.convenience,
+            ai: s.ai,
+            activity_score: s.activity_score
+        }));
+
+        setAnalysisData({
+          trend: { data: smoothedData, keys: Array.from(compsInTrend) },
+          themes: processedThemes,
+          positioning: processedPositioning,
+          whitespace: processedWhitespace,
+          strength: processedStrength
+        });
+      })
+      .catch((e) => console.error(e));
+  }, [selectedCompetitor]);
+
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
 
-  // Derived summary values from mock data
-  const fastestGrowingCluster = MOCK_TREND_KEYS[0]; // AI & Automation
-  const highestSaturation = MOCK_DISTRIBUTION_DATA[0].name; // Price & Value
-  const topOpportunity = MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name ?? "—";
+  // Derived summary values from dynamic API
+  const fastestGrowingName = summary?.fastest_growing?.name || "Loading...";
+  const fastestGrowingGrowth = summary?.fastest_growing?.growth || 0;
+  const highestSaturation = summary?.saturation?.theme || "Loading...";
+  const topOpportunity = summary?.opportunity?.theme || "Loading...";
+  const trackedClusters = summary?.clusters?.count || 0;
 
   // ─────────────────────────────────────────
   // Main render
@@ -250,6 +337,16 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <select 
+            className="px-3 py-2 bg-zinc-900 border border-white/10 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-violet-500"
+            value={selectedCompetitor}
+            onChange={(e) => setSelectedCompetitor(e.target.value)}
+          >
+            <option value="ALL">All Competitors</option>
+            <option value="Urban Company">Urban Company</option>
+            <option value="Housejoy">Housejoy</option>
+            <option value="Sulekha">Sulekha</option>
+          </select>
           <Link
             href="/experiment-builder"
             className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
@@ -273,8 +370,8 @@ export default function Dashboard() {
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full" />
             <div className="bg-emerald-500/10 p-3 rounded-2xl text-emerald-400 w-fit mb-4 group-hover:scale-110 transition-transform"><TrendingUp className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Fastest Growing</h3>
-            <p className="text-xl font-bold text-white mb-2 truncate" title={fastestGrowingCluster}>{fastestGrowingCluster}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Top emerging cluster from competitor signals.</p>
+            <p className="text-xl font-bold text-white mb-2 truncate" title={fastestGrowingName}>{fastestGrowingName}</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">+{fastestGrowingGrowth} growth in last 30 days.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
@@ -282,7 +379,7 @@ export default function Dashboard() {
             <div className="bg-red-500/10 p-3 rounded-2xl text-red-400 w-fit mb-4 group-hover:scale-110 transition-transform"><AlertTriangle className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Highest Saturation</h3>
             <p className="text-xl font-bold text-white mb-2 truncate" title={highestSaturation}>{highestSaturation}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Most crowded segment. Avoid direct competition.</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Most crowded segment.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative">
@@ -290,14 +387,14 @@ export default function Dashboard() {
             <div className="bg-violet-500/10 p-3 rounded-2xl text-violet-400 w-fit mb-4 group-hover:scale-110 transition-transform"><Lightbulb className="w-6 h-6" /></div>
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-1">Top Opportunity</h3>
             <p className="text-xl font-bold text-white mb-2 truncate" title={topOpportunity}>{topOpportunity}</p>
-            <p className="text-xs text-zinc-500 leading-relaxed">Highest ROI whitespace gap identified.</p>
+            <p className="text-xs text-zinc-500 leading-relaxed">Low competition, high potential.</p>
           </div>
 
           <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-6 rounded-3xl hover:bg-zinc-900/60 transition-all flex flex-col justify-center overflow-hidden relative">
             <div className="absolute top-0 right-0 w-24 h-24 bg-violet-500/5 blur-3xl rounded-full" />
             <h3 className="text-xs uppercase tracking-widest text-zinc-500 font-bold mb-4">Clusters Tracked</h3>
-            <p className="text-4xl font-black text-white">{MOCK_TREND_KEYS.length}</p>
-            <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes</p>
+            <p className="text-4xl font-black text-white">{trackedClusters}</p>
+            <p className="text-xs text-zinc-500 mt-2 uppercase tracking-widest font-bold">Active Themes Identifed</p>
           </div>
         </div>
 
@@ -314,26 +411,26 @@ export default function Dashboard() {
                 <h3 className="font-bold text-xl text-white">Trend Over Time</h3>
                 <p className="text-zinc-500 text-xs mt-1">Evolving messaging clusters</p>
                 <div className="mt-4 bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1.5 rounded-lg border border-violet-500/20 inline-block font-bold uppercase tracking-widest">
-                  Rising: {MOCK_TREND_KEYS[0]}
+                  Competitor Growth Trends
                 </div>
               </div>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={MOCK_TREND_DATA}>
+                  <LineChart data={analysisData ? analysisData.trend.data : MOCK_TREND_DATA}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
-                    <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                    <XAxis dataKey={analysisData ? "time" : "time"} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
-                    {MOCK_TREND_KEYS.map((key, i) => (
+                    {(analysisData ? analysisData.trend.keys : MOCK_TREND_KEYS).map((key: string, i: number) => (
                       <Line
                         key={key}
                         type="monotone"
                         dataKey={key}
-                        stroke={CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
-                        strokeWidth={3}
-                        dot={{ r: 0 }}
-                        activeDot={{ r: 5, strokeWidth: 0 }}
+                        stroke={COMP_BRAND_COLORS[key] || CLUSTER_COLORS[i % CLUSTER_COLORS.length]}
+                        strokeWidth={4}
+                        dot={false}
+                        activeDot={{ r: 4, strokeWidth: 0 }}
                       />
                     ))}
                   </LineChart>
@@ -351,23 +448,38 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="h-64 w-full relative">
-                <>
+                {selectedCompetitor === "ALL" ? (
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={MOCK_DISTRIBUTION_DATA} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
-                        {MOCK_DISTRIBUTION_DATA.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.fill} />
-                        ))}
-                      </Pie>
+                    <BarChart data={analysisData ? analysisData.themes : []}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
+                      <XAxis dataKey="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                       <Tooltip content={<CustomTooltip />} />
-                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
-                    </PieChart>
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
+                      <Bar dataKey="Urban Company" stackId="a" fill={COMP_BRAND_COLORS["Urban Company"]} />
+                      <Bar dataKey="Housejoy" stackId="a" fill={COMP_BRAND_COLORS["Housejoy"]} />
+                      <Bar dataKey="Sulekha" stackId="a" fill={COMP_BRAND_COLORS["Sulekha"]} />
+                    </BarChart>
                   </ResponsiveContainer>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-[70px]">
-                    <span className="text-3xl font-black text-white">{MOCK_DISTRIBUTION_DATA[0]?.value}%</span>
-                    <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{MOCK_DISTRIBUTION_DATA[0]?.name}</span>
-                  </div>
-                </>
+                ) : (
+                  <>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA} cx="50%" cy="50%" innerRadius={70} outerRadius={90} paddingAngle={8} dataKey="value" stroke="none">
+                          {(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA).map((entry: any, index: number) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<CustomTooltip />} />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-[70px]">
+                      <span className="text-3xl font-black text-white">{(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA)[0]?.value?.toFixed(1) || 0}%</span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-[0.2em] font-bold">{(analysisData ? analysisData.themes : MOCK_DISTRIBUTION_DATA)[0]?.name || "—"}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -390,7 +502,7 @@ export default function Dashboard() {
                     <YAxis type="number" dataKey="y" name="Outcome" domain={[0, 1]} hide />
                     <ZAxis range={[150, 600]} />
                     <Tooltip content={<ScatterTooltip />} cursor={{ strokeDasharray: "3 3", stroke: "rgba(255,255,255,0.2)" }} />
-                    {MOCK_POSITIONING_DATA.map((entry, index) => (
+                    {(analysisData ? analysisData.positioning : MOCK_POSITIONING_DATA).map((entry: any, index: number) => (
                       <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
                     ))}
                   </ScatterChart>
@@ -415,7 +527,7 @@ export default function Dashboard() {
                   <p className="text-zinc-500 text-xs mt-1">Highest ROI focus areas</p>
                 </div>
                 <div className="bg-emerald-500/10 text-emerald-300 text-[10px] px-3 py-1.5 rounded-lg border border-emerald-500/20 font-bold uppercase tracking-widest">
-                  Target: {MOCK_WHITESPACE_DATA.find((d) => d.fill === QUADRANT_FILLS["BEST opportunity"])?.name}
+                  Target: {topOpportunity}
                 </div>
               </div>
               <div className="h-72 w-full relative">
@@ -430,7 +542,7 @@ export default function Dashboard() {
                     <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
                     <ZAxis range={[300, 800]} />
                     <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
-                    {MOCK_WHITESPACE_DATA.map((entry, index) => (
+                    {(analysisData ? analysisData.whitespace : []).map((entry: any, index: number) => (
                       <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
                     ))}
                   </ScatterChart>
@@ -457,7 +569,7 @@ export default function Dashboard() {
               </div>
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={MOCK_COMPARISON_DATA} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                  <BarChart data={analysisData ? analysisData.strength : []} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartStroke} />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
