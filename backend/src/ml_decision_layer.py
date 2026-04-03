@@ -1,9 +1,8 @@
 import logging
 import math
 
-from src.decision_engine import choose_experiment_type
+from src.decision_engine import generate_candidates, score_experiment
 from src.ml_model import MarketStrategyRanker
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 ranker = MarketStrategyRanker()
@@ -47,44 +46,70 @@ def _build_ml_features(insight: dict) -> dict[str, float]:
         + (review_signal_strength * 0.15)
         + (evidence_strength * 0.10)
     )
-    competition_density = saturation
 
     return {
         "price_sensitivity": round(price_sensitivity, 3),
         "demand_gap": round(demand_gap, 3),
-        "competition_density": round(competition_density, 3),
+        "competition_density": round(saturation, 3),
         "review_signal_strength": round(((review_signal_strength * 0.7) + (avg_signal_confidence * 0.3)), 3),
         "evidence_strength": round(evidence_strength, 3),
     }
 
 
+def _select_top_candidates(candidates: list[dict], limit: int = 3) -> list[dict]:
+    ranked = sorted(candidates, key=lambda item: item.get("candidate_score", 0.0), reverse=True)
+    selected: list[dict] = []
+    used_types: set[str] = set()
+    used_clusters: set[str] = set()
+
+    for candidate in ranked:
+        if candidate["type"] in used_types:
+            continue
+        if candidate["cluster_id"] in used_clusters:
+            continue
+        selected.append(candidate)
+        used_types.add(candidate["type"])
+        used_clusters.add(candidate["cluster_id"])
+        if len(selected) == limit:
+            return selected
+
+    for candidate in ranked:
+        if len(selected) == limit:
+            break
+        if candidate["type"] in used_types:
+            continue
+        if candidate not in selected:
+            selected.append(candidate)
+            used_types.add(candidate["type"])
+
+    return selected[:limit]
+
+
 def generate_ranked_experiment_candidates(insights: list[dict]) -> list[dict]:
-    candidates = []
+    all_candidates = []
 
     for insight in insights:
         ml_features = _build_ml_features(insight)
         ml_analysis = ranker.analyze_candidate(ml_features)
-        decision_type = choose_experiment_type(ml_analysis["signals"])
-        candidates.append({
-            **insight,
-            "priority_score": ml_analysis["prediction_score"],
-            "ml_features": ml_features,
-            "ml_analysis": ml_analysis,
-            "decision_type": decision_type,
-        })
+        signals = ml_analysis["signals"]
+        base_score = float(ml_analysis["prediction_score"] or 0.0)
 
-    ranked = sorted(
-        candidates,
-        key=lambda item: item.get("priority_score", 0.0),
-        reverse=True,
-    )
-    return ranked[:3]
+        for candidate in generate_candidates(insight.get("cluster_name", "General Service"), signals):
+            candidate_score = score_experiment(candidate, signals)
+            combined_score = round((candidate_score * 0.65) + (base_score * 0.35), 3)
+            all_candidates.append({
+                **insight,
+                **candidate,
+                "priority_score": combined_score,
+                "candidate_score": combined_score,
+                "ml_features": ml_features,
+                "ml_analysis": ml_analysis,
+            })
+
+    return _select_top_candidates(all_candidates, limit=3)
 
 
 def process_decisions_ml(insights: list[dict]) -> list[dict]:
-    """
-    Compatibility wrapper for callers expecting ML-ranked candidates.
-    """
     ranked_candidates = generate_ranked_experiment_candidates(insights)
     output = []
     for candidate in ranked_candidates:
@@ -92,10 +117,11 @@ def process_decisions_ml(insights: list[dict]) -> list[dict]:
         output.append({
             "cluster_id": candidate["cluster_id"],
             "cluster_name": candidate["cluster_name"],
-            "priority_score": candidate["priority_score"],
+            "priority_score": candidate["candidate_score"],
             "confidence": ml_analysis["confidence_score"],
             "confidence_label": ml_analysis["confidence_label"],
             "ml_signals": ml_analysis["signals"],
-            "decision_type": candidate["decision_type"],
+            "decision_type": candidate["type"],
+            "variation": candidate["variation"],
         })
     return output

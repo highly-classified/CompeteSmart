@@ -792,7 +792,8 @@ export default function Dashboard() {
               const activeExperiment = exp.experiment || exp.recommended_action;
               const isActive = selectedExp === activeExperiment;
               const riskScore = Number.isFinite(exp.risk) ? exp.risk : 0.5;
-              const riskLabel = exp.risk_label || (riskScore < 0.35 ? "Low Risk" : riskScore < 0.65 ? "Medium Risk" : "High Risk");
+              const rawRiskLabel = exp.risk_label || (riskScore < 0.35 ? "Low Risk" : riskScore < 0.65 ? "Medium Risk" : "High Risk");
+              const riskLabel = rawRiskLabel.toLowerCase().includes("risk") ? rawRiskLabel : `${rawRiskLabel} Risk`;
               const glowColor = riskScore < 0.35 ? "bg-emerald-500/10" : riskScore < 0.65 ? "bg-amber-500/10" : "bg-red-500/10";
               const riskBadge = riskScore < 0.35
                 ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
@@ -824,7 +825,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       <span className={`${riskBadge} text-[10px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest`}>{riskLabel}</span>
                       <span className="bg-violet-500/10 text-violet-200 text-[10px] px-3 py-1 rounded-full border border-violet-500/25 font-bold uppercase tracking-widest">
-                        {confidenceLabel}
+                        Confidence: {confidenceLabel}
                       </span>
                     </div>
                   </div>

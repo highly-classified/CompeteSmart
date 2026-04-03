@@ -442,7 +442,6 @@ def compute_suggested_experiments(db: Session):
             experiment_text = generate_experiment_output(
                 candidate,
                 ml_analysis,
-                candidate["decision_type"],
                 {"risk_score": 0.5, "risk_level": "medium"},
             )["experiment"]
             
@@ -470,7 +469,6 @@ def compute_suggested_experiments(db: Session):
             structured_experiment = generate_experiment_output(
                 candidate,
                 ml_analysis,
-                candidate["decision_type"],
                 trust_output,
             )
             structured_experiment.update({
@@ -478,8 +476,9 @@ def compute_suggested_experiments(db: Session):
                 "cluster_name": category,
                 "evidence": candidate.get("evidence", []),
                 "decision": {
-                    "priority_score": candidate.get("priority_score"),
-                    "experiment_type": candidate.get("decision_type"),
+                    "priority_score": candidate.get("candidate_score"),
+                    "experiment_type": candidate.get("type"),
+                    "variation": candidate.get("variation"),
                     "ml_score": ml_analysis.get("prediction_score"),
                     "model_family": ml_analysis.get("model_family"),
                 },

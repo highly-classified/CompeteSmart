@@ -124,24 +124,26 @@ def _title_from_experiment_text(text: Optional[str]) -> Optional[str]:
 
 def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
     trust = item.get("trust_and_risk") or {}
-    raw_traceability = trust.get("traceability") or item.get("traceability") or {}
+    item_traceability = item.get("traceability")
+    raw_traceability = item_traceability if item_traceability else (trust.get("traceability") or {})
     traceability_reasons = raw_traceability if isinstance(raw_traceability, list) else raw_traceability.get("reasons", [])
+    trust_traceability = trust.get("traceability") or {}
     traceability = {} if isinstance(raw_traceability, list) else raw_traceability
     sample_signals = [
         signal.strip()
-        for signal in (traceability.get("sample_signals") or item.get("evidence") or [])
+        for signal in ((trust_traceability.get("sample_signals") or traceability.get("sample_signals")) or item.get("evidence") or [])
         if isinstance(signal, str) and signal.strip()
     ]
     competitor_ids = [
         str(competitor_id)
-        for competitor_id in (traceability.get("competitor_ids") or [])
+        for competitor_id in ((trust_traceability.get("competitor_ids") or traceability.get("competitor_ids")) or [])
         if competitor_id is not None
     ]
-    total_signals = traceability.get("total_signals")
+    total_signals = trust_traceability.get("total_signals", traceability.get("total_signals"))
     total_signals = int(total_signals) if isinstance(total_signals, int) else len(sample_signals)
-    avg_rating = traceability.get("avg_rating")
-    review_signal_count = traceability.get("review_signal_count")
-    review_score = traceability.get("review_score")
+    avg_rating = trust_traceability.get("avg_rating", traceability.get("avg_rating"))
+    review_signal_count = trust_traceability.get("review_signal_count", traceability.get("review_signal_count"))
+    review_score = trust_traceability.get("review_score", traceability.get("review_score"))
 
     summary_parts: List[str] = []
     if traceability_reasons:
