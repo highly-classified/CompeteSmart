@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
-import json
 import logging
-import re
+from collections import Counter, defaultdict
 from src import models
+from src.labeling import bucket_top_labels, normalize_theme_label
 
 logger = logging.getLogger("cache_manager")
 
@@ -69,38 +69,27 @@ def compute_summary_insights(db: Session):
     ORDER BY growth DESC LIMIT 1;
     """
 
-    # --- Dynamic Theme Logic (Dynamic CASE) ---
-    theme_case_sql = """
-    CASE
-        WHEN cl.label ILIKE '%clean%' THEN 'Cleaning'
-        WHEN cl.label ILIKE '%plumb%' THEN 'Plumbing'
-        WHEN cl.label ILIKE '%pest%' THEN 'Pest Control'
-        WHEN cl.label ILIKE '%beauty%' THEN 'Beauty'
-        WHEN cl.label ILIKE '%appliance%' THEN 'Appliance Repair'
-        WHEN cl.label ILIKE '%bath%' THEN 'Bathroom Cleaning'
-        ELSE 'Other'
-    END
-    """
+    label_rows = db.execute(text("""
+        SELECT COALESCE(NULLIF(cl.clean_label, ''), cl.label) AS theme_label, COUNT(*) AS total
+        FROM signals s
+        JOIN clusters cl ON s.cluster_id = cl.id
+        GROUP BY 1
+    """)).fetchall()
 
-    # --- Saturation Logic ---
-    sat_query = f"""
-    SELECT {theme_case_sql} AS theme, COUNT(*) AS total
-    FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    GROUP BY 1 HAVING {theme_case_sql} != 'Other'
-    ORDER BY total DESC LIMIT 1;
-    """
-    sat_res = db.execute(text(sat_query)).fetchone()
-    saturation = {"theme": sat_res[0] if sat_res else "Cleaning", "level": "high"}
+    theme_counter = Counter()
+    for raw_label, total in label_rows:
+        theme_counter[normalize_theme_label(raw_label)] += int(total)
 
-    # --- Opportunity Logic ---
-    opp_query = f"""
-    SELECT {theme_case_sql} AS theme, COUNT(*) AS total
-    FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    GROUP BY 1 HAVING {theme_case_sql} != 'Other' AND COUNT(*) > 2
-    ORDER BY total ASC LIMIT 1;
-    """
-    opp_res = db.execute(text(opp_query)).fetchone()
-    opportunity = {"theme": opp_res[0] if opp_res else "Pest Control", "level": "low"}
+    ranked_themes = bucket_top_labels(theme_counter, top_n=5, include_others=False)
+    saturation_theme = ranked_themes[0][0] if ranked_themes else "General Service"
+
+    opportunity_candidates = [(label, total) for label, total in ranked_themes if total > 2]
+    if not opportunity_candidates:
+        opportunity_candidates = [(label, total) for label, total in theme_counter.items() if label != "General Service" and total > 2]
+    opportunity_theme = min(opportunity_candidates, key=lambda item: item[1])[0] if opportunity_candidates else "General Service"
+
+    saturation = {"theme": saturation_theme, "level": "high"}
+    opportunity = {"theme": opportunity_theme, "level": "low"}
     
     # Growth (Already robust)
     growth_res = db.execute(text(growth_query)).fetchone()
@@ -131,58 +120,33 @@ def compute_competitor_analysis(db: Session, competitor: str):
     trend_res = db.execute(text(trend_query), params).fetchall()
     trends = [{"competitor": r[0], "month": r[1], "activity": float(r[2])} for r in trend_res]
 
-    # Themes (Aggregated by Dynamic derived themes)
-    theme_case_sql = """
-    CASE
-        WHEN cl.label ILIKE '%clean%' THEN 'Cleaning'
-        WHEN cl.label ILIKE '%plumb%' THEN 'Plumbing'
-        WHEN cl.label ILIKE '%pest%' THEN 'Pest Control'
-        WHEN cl.label ILIKE '%beauty%' THEN 'Beauty'
-        WHEN cl.label ILIKE '%appliance%' THEN 'Appliance Repair'
-        WHEN cl.label ILIKE '%bath%' THEN 'Bathroom Cleaning'
-        ELSE 'Other'
-    END
-    """
-    where_base = f"WHERE {theme_case_sql} != 'Other'"
-    if competitor != "ALL":
-        where_base += " AND c.name = :comp"
-
     theme_query = f"""
-    SELECT c.name, {theme_case_sql} AS theme, COUNT(*)
+    SELECT c.name, COALESCE(NULLIF(cl.clean_label, ''), cl.label) AS theme, COUNT(*)
     FROM signals s 
     JOIN competitors c ON s.competitor_id = c.id
     JOIN clusters cl ON s.cluster_id = cl.id
-    {where_base}
+    {"WHERE c.name = :comp" if competitor != "ALL" else ""}
     GROUP BY 1, 2;
     """
 
     theme_res = db.execute(text(theme_query), params).fetchall()
-    
-    # Process and Limit
+
+    competitor_theme_counts = defaultdict(Counter)
+    for comp_name, raw_label, count in theme_res:
+        competitor_theme_counts[comp_name][normalize_theme_label(raw_label)] += int(count)
+
     themes = []
-    comp_totals = {}
-    for r in theme_res:
-        comp_totals[r[0]] = comp_totals.get(r[0], 0) + r[2]
+    for comp_name, counts in competitor_theme_counts.items():
+        total = sum(counts.values())
+        if total <= 0:
+            continue
 
-    for r in theme_res:
-        comp_name = r[0]
-        label_raw = r[1]
-        count = r[2]
-        total = comp_totals[comp_name]
-        
-        themes.append({
-            "competitor": comp_name,
-            "category": label_raw,
-            "percentage": round((count * 100.0 / total), 2)
-        })
-
-    # Limit per competitor to top 6
-    final_themes = []
-    for comp in (["Urban Company", "Housejoy", "Sulekha"] if competitor == "ALL" else [competitor]):
-        comp_themes = [t for t in themes if t["competitor"] == comp]
-        final_themes.extend(sorted(comp_themes, key=lambda x: x["percentage"], reverse=True)[:6])
-    
-    themes = final_themes
+        for label, value in bucket_top_labels(counts, top_n=5, include_others=True):
+            themes.append({
+                "competitor": comp_name,
+                "category": label,
+                "percentage": round((value * 100.0 / total), 2)
+            })
 
 
     # Pos
@@ -233,42 +197,23 @@ def compute_competitor_analysis(db: Session, competitor: str):
         })
 
     # Strength (Dynamic Pivot of Top Themes)
-    top_clusters_query = f"""
-    SELECT {theme_case_sql} AS theme, COUNT(*) as total 
-    FROM signals s JOIN clusters cl ON s.cluster_id = cl.id 
-    GROUP BY 1 HAVING {theme_case_sql} != 'Other'
-    ORDER BY 2 DESC LIMIT 6
-    """
-    top_clusters_res = db.execute(text(top_clusters_query)).fetchall()
-    top_labels = [r[0] for r in top_clusters_res]
+    global_theme_counter = Counter()
+    for counts in competitor_theme_counts.values():
+        global_theme_counter.update(counts)
+    top_labels = [label for label, _ in bucket_top_labels(global_theme_counter, top_n=5, include_others=False)]
 
-    if not top_labels:
-        strength = []
-    else:
-        str_query = f"""
-        SELECT c.name, {theme_case_sql} AS theme, COUNT(*) 
-        FROM signals s 
-        JOIN competitors c ON s.competitor_id = c.id 
-        JOIN clusters cl ON s.cluster_id = cl.id
-        WHERE {theme_case_sql} IN ({','.join([':l'+str(i) for i in range(len(top_labels))])})
-        GROUP BY 1, 2;
-        """
-        str_params = {f"l{i}": label for i, label in enumerate(top_labels)}
-        # Add :comp param if needed
-        if competitor != "ALL":
-            str_query = str_query.replace("WHERE", "WHERE c.name = :comp AND")
-            str_params["comp"] = competitor
-            
-        str_res = db.execute(text(str_query), str_params).fetchall()
-        
-        strength_map = {}
-        for r in str_res:
-            comp_name, cluster_label, count = r[0], r[1], r[2]
-            if comp_name not in strength_map:
-                strength_map[comp_name] = {"name": comp_name}
-            strength_map[comp_name][cluster_label] = float(count)
-        
-        strength = list(strength_map.values())
+    strength = []
+    if top_labels:
+        for comp_name, counts in competitor_theme_counts.items():
+            row = {"name": comp_name}
+            has_value = False
+            for label in top_labels:
+                value = float(counts.get(label, 0))
+                if value > 0:
+                    has_value = True
+                row[label] = value
+            if has_value:
+                strength.append(row)
 
 
     return {

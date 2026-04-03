@@ -1,50 +1,15 @@
 import logging
 import numpy as np
-import re
+from datetime import datetime
 from sqlalchemy.orm import Session
+from src.labeling import generate_clean_label
 
 logger = logging.getLogger(__name__)
 
 class DataEmergentLabeler:
     @staticmethod
-    def generate_clean_label(content: str) -> str:
-        if not content:
-            return ""
-        
-        # 1. Basic Cleaning & Lowercase
-        text = content.lower()
-        
-        # 2. Remove ratings, prices, numbers (e.g. 4.81, 61k reviews, 2 bathrooms, 30-min)
-        # Remove (61k reviews) and similar
-        text = re.sub(r'\(?\d+[\.\d]*[k]?\s*reviews\)?', '', text)
-        # Remove digits and common number fragments
-        text = re.sub(r'\d+[\.\d]*', '', text)
-        
-        # Remove punctuation except spaces
-        text = re.sub(r'[^\w\s]', ' ', text)
-        
-        # 3. Stopwords & Filler removal
-        stopwords = {"the", "is", "and", "for", "with", "your", "to", "of", "at", "on", "in", "my", "near", "me", "i", "am", "a"}
-        fillers = {"great", "best", "professional", "service", "services", "home", "quality", "satisfied", "doorstep", "urban", "value", "money"}
-        
-        words = text.split()
-        
-        # 4. Filtering for meaningful words
-        meaningful_words = []
-        for w in words:
-            if len(w) >= 3 and w not in stopwords and w not in fillers:
-                meaningful_words.append(w)
-        
-        # 5. Selection (1-2 words max)
-        final_words = meaningful_words[:2]
-        result = " ".join(final_words).title().strip()
-        
-        # 6. Strict Validation
-        # Ignore if: empty, > 30 chars, or original was a full sentence (> 10 words)
-        if not result or len(result) > 30 or len(words) > 10:
-            return ""
-            
-        return result
+    def generate_clean_label(texts) -> str:
+        return generate_clean_label(texts)
 
 class ClusteringEngine:
     def __init__(self, db: Session):
@@ -129,8 +94,19 @@ class ClusteringEngine:
             # Step 1: Select best signal (highest confidence)
             best_signal = sorted(signals, key=lambda s: getattr(s, 'confidence', 1.0), reverse=True)[0]
             
-            # Step 2-5: Generate label from data
-            clean_label = DataEmergentLabeler.generate_clean_label(best_signal.content)
+            # Generate a label from the strongest signals in the cluster, not a single phrase.
+            top_signals = [
+                signal.content
+                for signal in sorted(
+                    signals,
+                    key=lambda s: (
+                        getattr(s, "confidence", 1.0),
+                        getattr(s, "created_at", None) or datetime.min,
+                    ),
+                    reverse=True,
+                )[:5]
+            ]
+            clean_label = DataEmergentLabeler.generate_clean_label(top_signals)
             
             cluster = Cluster(
                 id=cluster_id,
