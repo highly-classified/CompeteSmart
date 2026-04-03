@@ -5,6 +5,7 @@ psycopg2-binary>=2.9.0
 pgvector
 sentence-transformers
 scikit-learn
+xgboost
 hdbscan
 pandas
 numpy

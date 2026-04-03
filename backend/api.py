@@ -9,7 +9,7 @@ from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult, WhitespaceResult, DriftResult
 from src.auth import get_current_user
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -57,6 +57,181 @@ logging.basicConfig(
 logger = logging.getLogger("api")
 
 app = FastAPI(title="CompeteSmart Intelligence API")
+
+
+def _is_valid_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _parse_percentage_label(value: Any) -> Optional[float]:
+    if not isinstance(value, str) or not value.endswith("%"):
+        return None
+    try:
+        return max(0.0, min(float(value[:-1].strip()) / 100.0, 1.0))
+    except ValueError:
+        return None
+
+
+def _clamp_score(value: Any, fallback: float = 0.0) -> float:
+    if _is_valid_number(value):
+        return max(0.0, min(float(value), 1.0))
+    return fallback
+
+
+def _looks_like_cluster_id(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith("CL_")
+
+
+def _risk_label_from_score(value: float) -> str:
+    if value < 0.35:
+        return "Low Risk"
+    if value < 0.65:
+        return "Medium Risk"
+    return "High Risk"
+
+
+def _title_from_experiment_text(text: Optional[str]) -> Optional[str]:
+    if not text or not isinstance(text, str):
+        return None
+
+    cleaned = text.strip().strip(".")
+    if not cleaned:
+        return None
+
+    prefixes = ("Test ", "Develop ", "Launch ", "Implement ", "Create ", "Optimize ")
+    for prefix in prefixes:
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+
+    cleaned = cleaned.split(" to ", 1)[0]
+    cleaned = cleaned.split(" with ", 1)[0]
+    cleaned = cleaned.split(" for ", 1)[0]
+    cleaned = cleaned.split(" within ", 1)[0]
+    cleaned = cleaned.split(" in ", 1)[0]
+    cleaned = cleaned.strip(" '\"")
+
+    return cleaned[:80] if cleaned else None
+
+
+def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
+    trust = item.get("trust_and_risk") or {}
+    raw_traceability = trust.get("traceability") or item.get("traceability") or {}
+    traceability_reasons = raw_traceability if isinstance(raw_traceability, list) else raw_traceability.get("reasons", [])
+    traceability = {} if isinstance(raw_traceability, list) else raw_traceability
+    sample_signals = [
+        signal.strip()
+        for signal in (traceability.get("sample_signals") or item.get("evidence") or [])
+        if isinstance(signal, str) and signal.strip()
+    ]
+    competitor_ids = [
+        str(competitor_id)
+        for competitor_id in (traceability.get("competitor_ids") or [])
+        if competitor_id is not None
+    ]
+    total_signals = traceability.get("total_signals")
+    total_signals = int(total_signals) if isinstance(total_signals, int) else len(sample_signals)
+    avg_rating = traceability.get("avg_rating")
+    review_signal_count = traceability.get("review_signal_count")
+    review_score = traceability.get("review_score")
+
+    summary_parts: List[str] = []
+    if traceability_reasons:
+        summary_parts.append(traceability_reasons[0])
+    if sample_signals:
+        summary_parts.append(sample_signals[0])
+    if _is_valid_number(avg_rating):
+        summary_parts.append(f"avg rating: {float(avg_rating):.1f}/5")
+    elif _is_valid_number(review_score):
+        summary_parts.append(f"review score: {round(float(review_score) * 100):.0f}%")
+    if isinstance(review_signal_count, int) and review_signal_count > 0:
+        summary_parts.append(f"{review_signal_count} review signal{'s' if review_signal_count != 1 else ''}")
+    if total_signals:
+        summary_parts.append(f"{total_signals} supporting signal{'s' if total_signals != 1 else ''}")
+    if competitor_ids:
+        summary_parts.append(f"competitors: {', '.join(competitor_ids[:3])}")
+
+    summary = " | ".join(summary_parts) if summary_parts else (
+        item.get("insight")
+        or trust.get("explanation")
+        or "No traceability details were returned by the backend."
+    )
+
+    return {
+        "summary": summary,
+        "total_signals": total_signals,
+        "sample_signals": sample_signals[:3],
+        "competitor_ids": competitor_ids[:5],
+        "avg_rating": avg_rating,
+        "review_signal_count": review_signal_count,
+        "review_score": review_score,
+        "reasons": traceability_reasons[:3],
+    }
+
+
+def _normalize_experiment(item: Dict[str, Any]) -> Dict[str, Any]:
+    decision = item.get("decision") or {}
+    trust = item.get("trust_and_risk") or {}
+    recommended_action = (
+        item.get("experiment")
+        or item.get("recommended_action")
+        or decision.get("experiment")
+        or ""
+    )
+    cluster_name = item.get("cluster_name") or item.get("category")
+    raw_title = item.get("title") or cluster_name or item.get("cluster_id")
+    title = raw_title
+    if _looks_like_cluster_id(title):
+        title = _title_from_experiment_text(recommended_action) or cluster_name or title
+
+    confidence = item.get("confidence_score")
+    if not _is_valid_number(confidence):
+        confidence = _parse_percentage_label(item.get("confidence"))
+    if not _is_valid_number(confidence):
+        confidence = item.get("ml_predicted_score")
+    if not _is_valid_number(confidence):
+        confidence = trust.get("confidence_score")
+    if not _is_valid_number(confidence):
+        confidence = item.get("confidence")
+    if not _is_valid_number(confidence):
+        confidence = decision.get("priority_score")
+    confidence = _clamp_score(confidence, fallback=0.0)
+
+    risk = item.get("risk_score")
+    if not _is_valid_number(risk):
+        risk = trust.get("risk_score")
+    if not _is_valid_number(risk):
+        risk = item.get("risk")
+    risk = _clamp_score(risk, fallback=0.0)
+
+    traceability = _build_traceability(item)
+
+    return {
+        "title": title or "Suggested Experiment",
+        "category": item.get("category") or cluster_name or title or "General Service",
+        "cluster_id": item.get("cluster_id"),
+        "cluster_name": cluster_name,
+        "trend": item.get("trend") or decision.get("priority") or item.get("decision_type") or "",
+        "confidence": confidence,
+        "confidence_label": item.get("confidence") if isinstance(item.get("confidence"), str) else f"{round(confidence * 100):.0f}%",
+        "risk": risk,
+        "risk_label": item.get("risk") if isinstance(item.get("risk"), str) else _risk_label_from_score(risk),
+        "recommended_action": recommended_action,
+        "experiment": item.get("experiment") or recommended_action,
+        "hypothesis": item.get("hypothesis"),
+        "metric": item.get("metric"),
+        "expected_impact": item.get("expected_impact"),
+        "insight": item.get("insight") or item.get("hypothesis") or trust.get("explanation") or traceability["summary"],
+        "traceability": traceability,
+        "evidence": item.get("evidence") or traceability["sample_signals"],
+    }
+
+
+def _normalize_experiments(items: Any) -> List[Dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    normalized = [_normalize_experiment(item) for item in items if isinstance(item, dict)]
+    return normalized[:3]
 
 @app.on_event("startup")
 def startup_db():
@@ -513,7 +688,7 @@ def get_suggested_experiments(db: Session = Depends(get_db)):
     # 1. Try Dataset Cache (Database)
     cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
     if cache_entry and cache_entry.data:
-        return cache_entry.data
+        return _normalize_experiments(cache_entry.data)
         
     # 2. Primary Fallback: ML Standalone Results
     ml_output_path = "ml_standalone_results.json"
@@ -525,15 +700,23 @@ def get_suggested_experiments(db: Session = Depends(get_db)):
                 formatted = []
                 for item in data:
                     formatted.append({
+                        "title": item.get("cluster_name"),
                         "insight": f"ML Model Confidence: {item['ml_predicted_score']:.2f}",
-                        "cluster_id": item['cluster_name'],
-                        "trend": "High Priority",
-                        "confidence": item['ml_predicted_score'],
-                        "risk": 0.3,
-                        "recommended_action": item['recommended_action'],
-                        "evidence": []
+                        "cluster_id": item.get("cluster_id") or item.get("cluster_name"),
+                        "cluster_name": item.get("cluster_name"),
+                        "trend": item.get("priority", "High Priority"),
+                        "confidence": item.get("ml_predicted_score"),
+                        "risk": item.get("risk", 0.3),
+                        "recommended_action": item.get("recommended_action", ""),
+                        "traceability": {
+                            "summary": item.get("insight", ""),
+                            "total_signals": 0,
+                            "sample_signals": item.get("evidence", []),
+                            "competitor_ids": [],
+                        },
+                        "evidence": item.get("evidence", [])
                     })
-                return formatted
+                return _normalize_experiments(formatted)
         except Exception as e:
             logger.error(f"Error reading ML standalone file: {e}")
 
@@ -542,7 +725,7 @@ def get_suggested_experiments(db: Session = Depends(get_db)):
     if os.path.exists(output_path):
         try:
             with open(output_path, "r") as f:
-                return json.load(f)
+                return _normalize_experiments(json.load(f))
         except Exception as e:
             logger.error(f"Error reading legacy output file: {e}")
     

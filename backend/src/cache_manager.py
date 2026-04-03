@@ -2,28 +2,89 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
 import logging
+import math
+import re
 from collections import Counter, defaultdict
 from src import models
 from src.labeling import bucket_top_labels, normalize_theme_label
 from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
+from src.experiment_generator import generate_experiment_output
+from src.ml_decision_layer import generate_ranked_experiment_candidates
 from src.trust_layer import compute_trust_score
-import sys
-import os
-
-# Append parent dir to path to reach decision_layer.py if needed, 
-# but usually PYTHONPATH handles this in the repo structure.
-try:
-    from decision_layer import process_decisions
-except ImportError:
-    # Fallback for different execution contexts
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from decision_layer import process_decisions
 
 logger = logging.getLogger("cache_manager")
 
 # No runtime cleaning function needed anymore. 
 # Labels are cleaned during the ingestion pipeline and stored in `clusters.clean_label`.
+
+RATING_PATTERN = re.compile(r"rating[:\s]+([0-5](?:\.\d+)?)", re.IGNORECASE)
+PRICE_MARKERS = (
+    "price", "pricing", "discount", "offer", "budget", "affordable",
+    "value", "cost", "starting at", "₹", "rs ", "under ", "only "
+)
+REVIEW_MARKERS = (
+    "review", "reviews", "rating", "rated", "feedback", "experience",
+    "top-rated", "verified", "reliable", "professional"
+)
+
+
+def _clamp_score(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
+
+
+def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
+    rows = (
+        db.query(models.Signal.content, models.Signal.confidence)
+        .filter(models.Signal.cluster_id == cluster_id)
+        .order_by(models.Signal.confidence.desc(), models.Signal.created_at.desc(), models.Signal.id.desc())
+        .all()
+    )
+
+    contents = [row[0] for row in rows if row[0]]
+    evidence_count = len(contents)
+    avg_signal_confidence = (
+        sum(float(row[1]) for row in rows if row[1] is not None) / len(rows)
+        if rows else 0.5
+    )
+    avg_signal_confidence = _clamp_score(avg_signal_confidence)
+
+    price_hits = 0
+    review_hits = 0
+    ratings = []
+    for content in contents:
+        lowered = content.lower()
+        price_hits += sum(1 for marker in PRICE_MARKERS if marker in lowered)
+        review_hits += sum(1 for marker in REVIEW_MARKERS if marker in lowered)
+        match = RATING_PATTERN.search(content)
+        if match:
+            try:
+                ratings.append(float(match.group(1)) / 5.0)
+            except (TypeError, ValueError):
+                continue
+
+    price_density = _clamp_score(price_hits / max(evidence_count * 2, 1))
+    avg_rating_score = sum(ratings) / len(ratings) if ratings else 0.0
+    review_density = _clamp_score(review_hits / max(evidence_count * 2, 1))
+    review_signal_strength = _clamp_score(
+        (avg_rating_score * 0.55)
+        + (review_density * 0.25)
+        + (avg_signal_confidence * 0.20)
+    )
+
+    return {
+        "evidence_count": evidence_count,
+        "evidence": contents[:5],
+        "avg_signal_confidence": round(avg_signal_confidence, 3),
+        "price_signal_strength": round(price_density, 3),
+        "review_signal_strength": round(review_signal_strength, 3),
+        "avg_rating": round(avg_rating_score * 5.0, 2) if ratings else None,
+        "review_signal_count": review_hits,
+        "evidence_strength": round(
+            _clamp_score(math.log1p(evidence_count) / math.log1p(12)) if evidence_count > 0 else 0.0,
+            3,
+        ),
+    }
 
 
 def _get_target_competitors(db: Session, competitor: str) -> list[str]:
@@ -349,6 +410,7 @@ def compute_suggested_experiments(db: Session):
             # Find matching saturation mapping
             s_match = next((s for s in saturations if s["cluster_id"] == c_id), None)
             sat_score = s_match["saturation_score"] if s_match else 0.0
+            signal_context = _cluster_signal_context(db, c_id)
             
             # Map detected whitespace vectors into themes (logic from prototype_pipeline)
             # In production this can be further refined
@@ -359,21 +421,29 @@ def compute_suggested_experiments(db: Session):
                 "cluster_name": t["cluster_label"] or "Untitled Cluster",
                 "trend": t["growth_rate"],
                 "saturation": sat_score,
-                "whitespace_personas": w_personas
+                "whitespace_personas": w_personas,
+                **signal_context,
             })
             
         if not insights:
             logger.warning("No insights found to generate experiments.")
             return []
 
-        # 3. Run Decision Layer
-        decisions = process_decisions(insights)
+        # 3. Run ML -> Decision Engine pipeline
+        ranked_candidates = generate_ranked_experiment_candidates(insights)
         
-        # 4. Enrich with Trust & Risk Layer
+        # 4. Enrich with Trust & Risk Layer + structured experiment generation
         final_experiments = []
-        for decision in decisions:
-            cluster_id = decision["cluster_id"]
-            experiment_text = decision["experiment"]
+        for candidate in ranked_candidates:
+            cluster_id = candidate["cluster_id"]
+            ml_analysis = candidate["ml_analysis"]
+            category = candidate["cluster_name"]
+            experiment_text = generate_experiment_output(
+                candidate,
+                ml_analysis,
+                candidate["decision_type"],
+                {"risk_score": 0.5, "risk_level": "medium"},
+            )["experiment"]
             
             try:
                 trust_output = compute_trust_score(
@@ -383,19 +453,37 @@ def compute_suggested_experiments(db: Session):
                 )
             except Exception as e:
                 logger.error(f"Trust score calculation failed for {cluster_id}: {e}")
-                trust_output = {"risk_score": 0.5, "risk_level": "medium", "explanation": "Trust calculation failed."}
+                trust_output = {
+                    "risk_score": 0.5,
+                    "risk_level": "medium",
+                    "confidence_score": 0.4,
+                    "success_score": 0.4,
+                    "explanation": "Trust calculation failed.",
+                    "traceability": {
+                        "total_signals": 0,
+                        "sample_signals": [],
+                        "competitor_ids": [],
+                    },
+                }
             
-            final_experiments.append({
+            structured_experiment = generate_experiment_output(
+                candidate,
+                ml_analysis,
+                candidate["decision_type"],
+                trust_output,
+            )
+            structured_experiment.update({
                 "cluster_id": cluster_id,
-                "cluster_name": decision["cluster_name"],
+                "cluster_name": category,
+                "evidence": candidate.get("evidence", []),
                 "decision": {
-                    "priority_label": decision["priority"],
-                    "priority_score": decision["priority_score"],
-                    "experiment": experiment_text,
-                    "counterfactual": decision["counterfactual"]
+                    "priority_score": candidate.get("priority_score"),
+                    "experiment_type": candidate.get("decision_type"),
+                    "ml_score": ml_analysis.get("prediction_score"),
+                    "model_family": ml_analysis.get("model_family"),
                 },
-                "trust_and_risk": trust_output
             })
+            final_experiments.append(structured_experiment)
             
         return final_experiments
         
