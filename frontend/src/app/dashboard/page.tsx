@@ -55,7 +55,7 @@ interface Experiment {
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
 const COMP_BRAND_COLORS: Record<string, string> = {
   "Urban Company": "#a78bfa", // Purple
-  "Housejoy": "#34d399", // Green
+  "House Joy": "#34d399", // Green
   "Sulekha": "#fbbf24", // Yellow
 };
 const PIE_COLORS = ["#f87171", "#60a5fa", "#34d399", "#a78bfa", "#f472b6"];
@@ -71,6 +71,16 @@ const QUADRANT_FILLS: Record<string, string> = {
   Crowded: "#fbbf24",
   Weak: "#60a5fa",
   Avoid: "#f87171",
+};
+
+const DISPLAY_COMPETITORS = ["House Joy", "Sulekha", "Urban Company"];
+
+const normalizeCompetitorName = (name: string) => {
+  const normalized = name.replace(/[^a-z]/gi, "").toLowerCase();
+  if (normalized === "urbancompany") return "Urban Company";
+  if (normalized === "housejoy") return "House Joy";
+  if (normalized === "sulekha") return "Sulekha";
+  return name;
 };
 
 // ─────────────────────────────────────────────
@@ -263,8 +273,21 @@ export default function Dashboard() {
           return smoothed;
         });
 
-        const themeGroups = data.theme_groups || {};
-        const themeCompetitors = Object.keys(themeGroups);
+        const rawThemeGroups = data.theme_groups || {};
+        const themeGroups = Object.entries(rawThemeGroups).reduce((acc: Record<string, ThemeGroupEntry[]>, [competitorName, entries]: [string, any]) => {
+          const normalizedName = normalizeCompetitorName(competitorName);
+          if (!acc[normalizedName]) {
+            acc[normalizedName] = [];
+          }
+          acc[normalizedName].push(
+            ...((entries || []) as ThemeGroupEntry[]).map((entry) => ({
+              ...entry,
+              competitor: normalizedName,
+            }))
+          );
+          return acc;
+        }, {});
+        const themeCompetitors = DISPLAY_COMPETITORS.filter((competitorName) => themeGroups[competitorName]?.length);
         if (themeCompetitors.length > 0) {
           setAvailableCompetitors(themeCompetitors);
         }
@@ -291,26 +314,47 @@ export default function Dashboard() {
 
         // Positioning
         const processedPositioning = data.positioning.map((p: any) => ({
-            name: p.competitor,
+            name: normalizeCompetitorName(p.competitor),
             x: p.price_index,
             y: p.trust_score,
             z: p.activity_score,
-            fill: COMP_BRAND_COLORS[p.competitor] || "#60a5fa"
+            fill: COMP_BRAND_COLORS[normalizeCompetitorName(p.competitor)] || "#60a5fa"
         }));
 
         const processedWhitespace = data.whitespace
             .filter((w: any) => w.competitor)
             .map((w: any) => ({
-                competitor: w.competitor,
+                competitor: normalizeCompetitorName(w.competitor),
                 x: w.x,
-            y: w.y,
-            fill: COMP_BRAND_COLORS[w.competitor] || "#60a5fa"
+                y: w.y,
+                fill: COMP_BRAND_COLORS[normalizeCompetitorName(w.competitor)] || "#60a5fa"
             }));
 
-        const processedStrength = ((data.strength_groups || []) as StrengthGroupEntry[]).map((group) => {
+        const normalizedStrengthGroups = ((data.strength_groups || []) as StrengthGroupEntry[]).reduce((acc: StrengthGroupEntry[], group) => {
+          const normalizedName = normalizeCompetitorName(group.competitor);
+          const existing = acc.find((entry) => entry.competitor === normalizedName);
+          if (existing) {
+            group.segments.forEach((segment) => {
+              const current = existing.segments.find((item) => item.label === segment.label);
+              if (current) {
+                current.value += segment.value;
+              } else {
+                existing.segments.push({ ...segment });
+              }
+            });
+          } else {
+            acc.push({
+              competitor: normalizedName,
+              segments: group.segments.map((segment) => ({ ...segment })),
+            });
+          }
+          return acc;
+        }, []).filter((group) => DISPLAY_COMPETITORS.includes(group.competitor));
+
+        const processedStrength = normalizedStrengthGroups.map((group) => {
           const row: Record<string, string | number> = { name: group.competitor };
           group.segments.forEach((segment) => {
-            row[segment.label] = segment.value;
+            row[segment.label] = Number(segment.value.toFixed(2));
           });
           return row;
         });
