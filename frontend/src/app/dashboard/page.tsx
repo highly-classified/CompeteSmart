@@ -214,8 +214,9 @@ const ScatterTooltip = ({ active, payload }: any) => {
 // ─────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [experiments] = useState<Experiment[]>(MOCK_EXPERIMENTS);
+  const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
+
 
   const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
   const [availableCompetitors, setAvailableCompetitors] = useState<string[]>([]);
@@ -235,7 +236,19 @@ export default function Dashboard() {
       .then(res => res.json())
       .then(setSummary)
       .catch(e => console.error("Summary fetch error", e));
+
+    fetch("/api/experiments")
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setExperiments(data);
+        } else {
+          setExperiments([]);
+        }
+      })
+      .catch(e => console.error("Experiments fetch error", e));
   }, []);
+
 
   useEffect(() => {
     fetch(`/api/competitor-analysis?competitor=${encodeURIComponent(toApiCompetitorName(selectedCompetitor))}`)

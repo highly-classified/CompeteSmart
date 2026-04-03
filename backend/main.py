@@ -29,7 +29,8 @@ from src.intelligence.clustering import ClusteringEngine
 from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.trust_layer import compute_trust_score
-from decision_layer import process_decisions
+from src.ml_decision_layer import process_decisions_ml as process_decisions
+
 from src.cache_manager import refresh_dashboard_cache
 
 
