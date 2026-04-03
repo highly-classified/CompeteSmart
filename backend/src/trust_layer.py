@@ -81,9 +81,10 @@ def compute_trust_score(cluster_id: str, experiment: str, client_positioning: st
         with conn.cursor(cursor_factory=DictCursor) as cur:
             # 1. Fetch Signals
             cur.execute("""
-                SELECT content, competitor_id, snapshot_id, confidence
-                FROM signals
-                WHERE cluster_id = %s
+                SELECT s.content, s.competitor_id, s.snapshot_id, s.confidence, c.name AS competitor_name
+                FROM signals s
+                LEFT JOIN competitors c ON s.competitor_id = c.id
+                WHERE s.cluster_id = %s
             """, (cluster_id,))
             signals = cur.fetchall()
             
@@ -183,11 +184,14 @@ def compute_trust_score(cluster_id: str, experiment: str, client_positioning: st
             
             # Extract unique competitor IDs (Limit to 5)
             unique_competitors = []
+            unique_competitor_names = []
             seen_competitors = set()
             for s in signals:
                 cid = s['competitor_id']
                 if cid is not None and cid not in seen_competitors:
                     unique_competitors.append(cid)
+                    if s.get("competitor_name"):
+                        unique_competitor_names.append(s["competitor_name"])
                     seen_competitors.add(cid)
                     if len(unique_competitors) >= 5:
                         break
@@ -203,6 +207,7 @@ def compute_trust_score(cluster_id: str, experiment: str, client_positioning: st
                     "total_signals": signal_count,
                     "sample_signals": sample_signals,
                     "competitor_ids": unique_competitors,
+                    "competitor_names": unique_competitor_names,
                     "avg_signal_confidence": round(avg_signal_confidence, 3),
                     "review_signal_count": review_signal_count,
                     "avg_rating": round(avg_rating * 5.0, 2) if ratings else None,

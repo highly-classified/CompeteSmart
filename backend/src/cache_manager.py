@@ -36,7 +36,8 @@ def _clamp_score(value: float, low: float = 0.0, high: float = 1.0) -> float:
 
 def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
     rows = (
-        db.query(models.Signal.content, models.Signal.confidence)
+        db.query(models.Signal.content, models.Signal.confidence, models.Signal.competitor_id, models.Competitor.name)
+        .join(models.Competitor, models.Signal.competitor_id == models.Competitor.id)
         .filter(models.Signal.cluster_id == cluster_id)
         .order_by(models.Signal.confidence.desc(), models.Signal.created_at.desc(), models.Signal.id.desc())
         .all()
@@ -53,6 +54,8 @@ def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
     price_hits = 0
     review_hits = 0
     ratings = []
+    competitor_counts: dict[str, int] = {}
+    competitor_examples: dict[str, str] = {}
     for content in contents:
         lowered = content.lower()
         price_hits += sum(1 for marker in PRICE_MARKERS if marker in lowered)
@@ -64,6 +67,14 @@ def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
             except (TypeError, ValueError):
                 continue
 
+    for row in rows:
+        competitor_name = row[3]
+        content = row[0]
+        if competitor_name:
+            competitor_counts[competitor_name] = competitor_counts.get(competitor_name, 0) + 1
+            if competitor_name not in competitor_examples and content:
+                competitor_examples[competitor_name] = content
+
     price_density = _clamp_score(price_hits / max(evidence_count * 2, 1))
     avg_rating_score = sum(ratings) / len(ratings) if ratings else 0.0
     review_density = _clamp_score(review_hits / max(evidence_count * 2, 1))
@@ -72,6 +83,19 @@ def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
         + (review_density * 0.25)
         + (avg_signal_confidence * 0.20)
     )
+    ranked_competitors = sorted(
+        competitor_counts.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    source_competitors = [name for name, _count in ranked_competitors[:3]]
+    source_signal_examples = [
+        {
+            "competitor": name,
+            "signal": competitor_examples.get(name),
+            "signal_count": count,
+        }
+        for name, count in ranked_competitors[:3]
+    ]
 
     return {
         "evidence_count": evidence_count,
@@ -81,6 +105,8 @@ def _cluster_signal_context(db: Session, cluster_id: str) -> dict:
         "review_signal_strength": round(review_signal_strength, 3),
         "avg_rating": round(avg_rating_score * 5.0, 2) if ratings else None,
         "review_signal_count": review_hits,
+        "source_competitors": source_competitors,
+        "source_signal_examples": source_signal_examples,
         "evidence_strength": round(
             _clamp_score(math.log1p(evidence_count) / math.log1p(12)) if evidence_count > 0 else 0.0,
             3,

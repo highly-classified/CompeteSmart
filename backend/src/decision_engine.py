@@ -241,6 +241,21 @@ def build_experiment_traceability(
     experiment_type = experiment["type"]
     candidate_score = float(experiment.get("candidate_score", 0.0) or 0.0)
     reasons: list[str] = []
+    source_competitors = experiment.get("source_competitors") or []
+    source_signal_examples = experiment.get("source_signal_examples") or []
+
+    if source_competitors:
+        lead_competitor = source_competitors[0]
+        example_signal = next(
+            (entry.get("signal") for entry in source_signal_examples if entry.get("competitor") == lead_competitor and entry.get("signal")),
+            None,
+        )
+        if example_signal:
+            snippet = str(example_signal).strip().replace("\n", " ")
+            snippet = snippet[:88].rstrip(" .,;:")
+            reasons.append(f"Derived from {lead_competitor} signal: {snippet}")
+        else:
+            reasons.append(f"Derived from recurring {lead_competitor} competitor signals")
 
     if experiment_type == "price_drop":
         reasons.append(f"Price-led intervention ranks highest for this segment (score {candidate_score:.2f})")

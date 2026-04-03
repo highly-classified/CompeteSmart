@@ -143,6 +143,11 @@ def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
         for competitor_id in ((trust_traceability.get("competitor_ids") or traceability.get("competitor_ids")) or [])
         if competitor_id is not None
     ]
+    competitor_names = [
+        str(name)
+        for name in ((trust_traceability.get("competitor_names") or traceability.get("competitor_names")) or [])
+        if name
+    ]
     total_signals = trust_traceability.get("total_signals", traceability.get("total_signals"))
     total_signals = int(total_signals) if isinstance(total_signals, int) else len(sample_signals)
     avg_rating = trust_traceability.get("avg_rating", traceability.get("avg_rating"))
@@ -162,6 +167,8 @@ def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
         summary_parts.append(f"{review_signal_count} review signal{'s' if review_signal_count != 1 else ''}")
     if total_signals:
         summary_parts.append(f"{total_signals} supporting signal{'s' if total_signals != 1 else ''}")
+    if competitor_names:
+        summary_parts.append(f"sources: {', '.join(competitor_names[:2])}")
     if competitor_ids:
         summary_parts.append(f"competitors: {', '.join(competitor_ids[:3])}")
 
@@ -176,6 +183,7 @@ def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
         "total_signals": total_signals,
         "sample_signals": sample_signals[:3],
         "competitor_ids": competitor_ids[:5],
+        "competitor_names": competitor_names[:5],
         "avg_rating": avg_rating,
         "review_signal_count": review_signal_count,
         "review_score": review_score,
