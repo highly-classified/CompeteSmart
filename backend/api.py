@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from sqlalchemy import text, func
+from sqlalchemy import text, func, case
 from src.database import get_db, engine, SessionLocal
 from src import models
 from src.intelligence.clustering import ClusteringEngine
@@ -26,6 +26,17 @@ load_dotenv()
 
 from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
 from src.execution_copilot import chat_with_experiment
+
+# Dynamic Theme Mapping Layer (Requested)
+DYNAMIC_THEME = case(
+    (models.Cluster.label.ilike("%clean%"), "Cleaning"),
+    (models.Cluster.label.ilike("%plumb%"), "Plumbing"),
+    (models.Cluster.label.ilike("%pest%"), "Pest Control"),
+    (models.Cluster.label.ilike("%beauty%"), "Beauty"),
+    (models.Cluster.label.ilike("%appliance%"), "Appliance Repair"),
+    (models.Cluster.label.ilike("%bath%"), "Bathroom Cleaning"),
+    else_="Other"
+)
 
 SUMMARY_CACHE = {
     "data": None,
@@ -112,7 +123,7 @@ def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id
     # Join Signal -> Cluster to get the readable label
     results = (
         db.query(
-            models.Cluster.clean_label.label("cluster_name"),
+            DYNAMIC_THEME.label("cluster_name"),
             func.to_char(models.Snapshot.created_at, "YYYY-MM").label("month"),
             func.count(models.Signal.id).label("count")
         )
@@ -120,10 +131,10 @@ def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id
         .join(models.Competitor, models.Signal.competitor_id == models.Competitor.id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
-        .filter(models.Cluster.clean_label != "")
+        .filter(DYNAMIC_THEME != "Other")
         .filter(models.Signal.cluster_id.isnot(None))
-        .group_by(models.Cluster.clean_label, "month")
-        .order_by(models.Cluster.clean_label, "month")
+        .group_by(DYNAMIC_THEME, "month")
+        .order_by(DYNAMIC_THEME, "month")
         .all()
     )
 
@@ -162,31 +173,30 @@ def get_competitor_positioning(client_id: int, db: Session = Depends(get_db), us
     stats = (
         db.query(
             models.Competitor.name,
-            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(premium_p)).label("premium"),
-            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(affordable_p)).label("affordable"),
-            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(outcome_p)).label("outcome"),
-            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(feature_p)).label("feature")
+            func.count(models.Signal.id).filter(DYNAMIC_THEME.op("~*")(premium_p)).label("premium"),
+            func.count(models.Signal.id).filter(DYNAMIC_THEME.op("~*")(affordable_p)).label("affordable"),
+            func.count(models.Signal.id).filter(DYNAMIC_THEME.op("~*")(outcome_p)).label("outcome"),
+            func.count(models.Signal.id).filter(DYNAMIC_THEME.op("~*")(feature_p)).label("feature")
         )
         .join(models.Signal, models.Competitor.id == models.Signal.competitor_id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
-        .filter(models.Cluster.clean_label != "")
+        .filter(DYNAMIC_THEME != "Other")
         .group_by(models.Competitor.name)
         .all()
     )
 
     # Get dominant cluster per competitor
-    # This is a bit more complex in a single query, so we'll do a separate one or just pick the top from another join
     dominant_clusters = (
         db.query(
             models.Competitor.name,
-            models.Cluster.clean_label.label("top_cluster")
+            DYNAMIC_THEME.label("top_cluster")
         )
         .join(models.Signal, models.Competitor.id == models.Signal.competitor_id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
-        .filter(models.Cluster.clean_label != "")
-        .group_by(models.Competitor.name, models.Cluster.clean_label)
+        .filter(DYNAMIC_THEME != "Other")
+        .group_by(models.Competitor.name, DYNAMIC_THEME)
         .order_by(models.Competitor.name, func.count(models.Cluster.id).desc())
         .distinct(models.Competitor.name) 
         .all()
@@ -233,14 +243,14 @@ def get_messaging_distribution(client_id: int, db: Session = Depends(get_db), us
     # 2. Aggregate counts per cluster
     results = (
         db.query(
-            models.Cluster.clean_label.label("name"),
+            DYNAMIC_THEME.label("name"),
             func.count(models.Signal.id).label("count")
         )
         .join(models.Signal, models.Cluster.id == models.Signal.cluster_id)
         .join(models.Competitor, models.Signal.competitor_id == models.Competitor.id)
         .filter(models.Competitor.client_id == client_id)
-        .filter(models.Cluster.clean_label != "")
-        .group_by(models.Cluster.clean_label)
+        .filter(DYNAMIC_THEME != "Other")
+        .group_by(DYNAMIC_THEME)
         .order_by(func.count(models.Signal.id).desc())
         .limit(6)
         .all()

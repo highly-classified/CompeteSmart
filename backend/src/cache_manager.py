@@ -68,46 +68,43 @@ def compute_summary_insights(db: Session):
     FROM recent r LEFT JOIN previous p ON r.name = p.name
     ORDER BY growth DESC LIMIT 1;
     """
-    growth_res = db.execute(text(growth_query)).fetchone()
-    fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if (growth_res and growth_res[0] and growth_res[0] != "N/A") else {"name": "Urban Company", "growth": 0}
 
-    # --- Light Cleaning Utility ---
-    def light_clean(label: str) -> str:
-        if not label or label.lower().strip() == "n/a": return ""
-        # 1. Strip numbers and ratings (e.g. 4.81, 61k reviews, trailing digits)
-        label = re.sub(r'\(?\d+[\.\d]*[k]?\s*reviews\)?', '', label.lower())
-        label = re.sub(r'\d+[\.\d]*', '', label)
-        # 2. Add trim to 30 chars
-        label = label[:30].strip(" .,;:-?!/")
-        if label.lower() == "n/a": return ""
-        return label.title()
+    # --- Dynamic Theme Logic (Dynamic CASE) ---
+    theme_case_sql = """
+    CASE
+        WHEN cl.label ILIKE '%clean%' THEN 'Cleaning'
+        WHEN cl.label ILIKE '%plumb%' THEN 'Plumbing'
+        WHEN cl.label ILIKE '%pest%' THEN 'Pest Control'
+        WHEN cl.label ILIKE '%beauty%' THEN 'Beauty'
+        WHEN cl.label ILIKE '%appliance%' THEN 'Appliance Repair'
+        WHEN cl.label ILIKE '%bath%' THEN 'Bathroom Cleaning'
+        ELSE 'Other'
+    END
+    """
 
     # --- Saturation Logic ---
-    sat_query = """
-    SELECT cl.label, COUNT(*) AS total
+    sat_query = f"""
+    SELECT {theme_case_sql} AS theme, COUNT(*) AS total
     FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE cl.label IS NOT NULL AND cl.label NOT ILIKE '%N/A%'
-    GROUP BY cl.label ORDER BY total DESC LIMIT 1;
+    GROUP BY 1 HAVING {theme_case_sql} != 'Other'
+    ORDER BY total DESC LIMIT 1;
     """
     sat_res = db.execute(text(sat_query)).fetchone()
-    sat_theme = light_clean(sat_res[0]) if sat_res and sat_res[0] else None
-    if not sat_theme: sat_theme = "Cleaning" # Critical Fallback
-    saturation = {"theme": sat_theme, "level": "high"}
+    saturation = {"theme": sat_res[0] if sat_res else "Cleaning", "level": "high"}
 
     # --- Opportunity Logic ---
-    opp_query = """
-    SELECT cl.label, COUNT(*) AS total
+    opp_query = f"""
+    SELECT {theme_case_sql} AS theme, COUNT(*) AS total
     FROM signals s JOIN clusters cl ON s.cluster_id = cl.id
-    WHERE cl.label IS NOT NULL AND cl.label NOT ILIKE '%N/A%'
-    GROUP BY cl.label 
-    HAVING COUNT(*) > 2
+    GROUP BY 1 HAVING {theme_case_sql} != 'Other' AND COUNT(*) > 2
     ORDER BY total ASC LIMIT 1;
     """
     opp_res = db.execute(text(opp_query)).fetchone()
-    opp_theme = light_clean(opp_res[0]) if opp_res and opp_res[0] else None
-    if not opp_theme: opp_theme = "Pest Control" # Critical Fallback
-    opportunity = {"theme": opp_theme, "level": "low"}
-
+    opportunity = {"theme": opp_res[0] if opp_res else "Pest Control", "level": "low"}
+    
+    # Growth (Already robust)
+    growth_res = db.execute(text(growth_query)).fetchone()
+    fastest_growing = {"name": growth_res[0], "growth": growth_res[1]} if (growth_res and growth_res[0] and growth_res[0] != "N/A") else {"name": "Urban Company", "growth": 0}
 
     # Clusters
     clusters_res = db.execute(text("SELECT COUNT(*) FROM clusters;")).fetchone()
@@ -134,13 +131,24 @@ def compute_competitor_analysis(db: Session, competitor: str):
     trend_res = db.execute(text(trend_query), params).fetchall()
     trends = [{"competitor": r[0], "month": r[1], "activity": float(r[2])} for r in trend_res]
 
-    # Themes (Aggregated by static clean labels)
-    where_base = "WHERE cl.clean_label IS NOT NULL AND cl.clean_label != ''"
+    # Themes (Aggregated by Dynamic derived themes)
+    theme_case_sql = """
+    CASE
+        WHEN cl.label ILIKE '%clean%' THEN 'Cleaning'
+        WHEN cl.label ILIKE '%plumb%' THEN 'Plumbing'
+        WHEN cl.label ILIKE '%pest%' THEN 'Pest Control'
+        WHEN cl.label ILIKE '%beauty%' THEN 'Beauty'
+        WHEN cl.label ILIKE '%appliance%' THEN 'Appliance Repair'
+        WHEN cl.label ILIKE '%bath%' THEN 'Bathroom Cleaning'
+        ELSE 'Other'
+    END
+    """
+    where_base = f"WHERE {theme_case_sql} != 'Other'"
     if competitor != "ALL":
         where_base += " AND c.name = :comp"
 
     theme_query = f"""
-    SELECT c.name, cl.clean_label, COUNT(*)
+    SELECT c.name, {theme_case_sql} AS theme, COUNT(*)
     FROM signals s 
     JOIN competitors c ON s.competitor_id = c.id
     JOIN clusters cl ON s.cluster_id = cl.id
@@ -224,12 +232,12 @@ def compute_competitor_analysis(db: Session, competitor: str):
             "y": y_score
         })
 
-    # Strength (Dynamic Pivot of Top 6 Segments)
-    top_clusters_query = """
-    SELECT cl.clean_label, COUNT(*) as total 
+    # Strength (Dynamic Pivot of Top Themes)
+    top_clusters_query = f"""
+    SELECT {theme_case_sql} AS theme, COUNT(*) as total 
     FROM signals s JOIN clusters cl ON s.cluster_id = cl.id 
-    WHERE cl.clean_label IS NOT NULL AND cl.clean_label != ''
-    GROUP BY 1 ORDER BY 2 DESC LIMIT 6
+    GROUP BY 1 HAVING {theme_case_sql} != 'Other'
+    ORDER BY 2 DESC LIMIT 6
     """
     top_clusters_res = db.execute(text(top_clusters_query)).fetchall()
     top_labels = [r[0] for r in top_clusters_res]
@@ -238,11 +246,11 @@ def compute_competitor_analysis(db: Session, competitor: str):
         strength = []
     else:
         str_query = f"""
-        SELECT c.name, cl.clean_label, COUNT(*) 
+        SELECT c.name, {theme_case_sql} AS theme, COUNT(*) 
         FROM signals s 
         JOIN competitors c ON s.competitor_id = c.id 
         JOIN clusters cl ON s.cluster_id = cl.id
-        WHERE cl.clean_label IN ({','.join([':l'+str(i) for i in range(len(top_labels))])})
+        WHERE {theme_case_sql} IN ({','.join([':l'+str(i) for i in range(len(top_labels))])})
         GROUP BY 1, 2;
         """
         str_params = {f"l{i}": label for i, label in enumerate(top_labels)}
