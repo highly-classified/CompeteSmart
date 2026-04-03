@@ -381,9 +381,9 @@ export default function Dashboard() {
   const strengthKeys = analysisData?.strengthLabels?.length
     ? [
         ...analysisData.strengthLabels,
-        ...(analysisData.strength.some((row: any) => Number(row.Others || 0) > 0) ? ["Others"] : []),
+        ...(analysisData?.strength?.some((row: any) => Number(row.Others || 0) > 0) ? ["Others"] : []),
       ]
-    : analysisData?.strength?.length > 0
+    : (analysisData?.strength && analysisData.strength.length > 0)
       ? Object.keys(analysisData.strength[0]).filter(k => k !== "name")
     : [];
 
