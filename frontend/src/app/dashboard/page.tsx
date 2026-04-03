@@ -84,6 +84,11 @@ const normalizeCompetitorName = (name: string) => {
   return name;
 };
 
+const toApiCompetitorName = (name: string) => {
+  if (name === "House Joy") return "Housejoy";
+  return name;
+};
+
 // ─────────────────────────────────────────────
 // Mock Data
 // ─────────────────────────────────────────────
@@ -233,7 +238,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    fetch(`/api/competitor-analysis?competitor=${selectedCompetitor}`)
+    fetch(`/api/competitor-analysis?competitor=${encodeURIComponent(toApiCompetitorName(selectedCompetitor))}`)
       .then((res) => {
         if (!res.ok) throw new Error("API error");
         return res.json();
