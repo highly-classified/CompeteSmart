@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
+// Force Next.js to always render this page fresh
+export const dynamic = "force-dynamic";
+
+import { useState, Suspense } from "react";
 import { SimulationOrchestrator } from "@/components/simulation/SimulationOrchestrator";
 import { ExperimentHistory } from "@/components/simulation/ExperimentHistory";
-import { History, FlaskConical, ArrowLeft } from "lucide-react";
+import { History, FlaskConical, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 export default function ExperimentBuilderPage() {
     const [view, setView] = useState<"builder" | "history">("builder");
+
 
     return (
         <main className="bg-black/95 text-white min-h-screen overflow-x-hidden selection:bg-emerald-500/30 font-sans">
@@ -16,6 +20,7 @@ export default function ExperimentBuilderPage() {
                 <div className="max-w-7xl mx-auto px-6 flex items-center gap-1 h-14">
                     <Link 
                         href="/dashboard"
+                        prefetch={false}
                         className="flex items-center gap-2 px-3 py-1.5 mr-4 rounded-lg text-xs font-bold uppercase tracking-widest text-zinc-400 hover:text-white hover:bg-white/10 border border-white/5 transition-all"
                     >
                         <ArrowLeft className="w-3.5 h-3.5" /> Back
@@ -43,10 +48,18 @@ export default function ExperimentBuilderPage() {
             </div>
 
             {view === "builder" ? (
-                <SimulationOrchestrator />
+                <Suspense fallback={
+                    <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                        <Loader2 className="w-10 h-10 text-emerald-500 animate-spin mb-4" />
+                        <p className="text-zinc-500 uppercase tracking-widest text-xs font-bold">Synchronizing Simulation Engine...</p>
+                    </div>
+                }>
+                    <SimulationOrchestrator />
+                </Suspense>
             ) : (
                 <ExperimentHistory onBack={() => setView("builder")} />
             )}
         </main>
     );
 }
+

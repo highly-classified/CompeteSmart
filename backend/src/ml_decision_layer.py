@@ -4,9 +4,19 @@ import math
 from src.decision_engine import generate_candidates, score_experiment
 from src.ml_model import MarketStrategyRanker
 
-logger = logging.getLogger(__name__)
-ranker = MarketStrategyRanker()
+# Shared ranker instance to avoid multiple model loads in memory
+_shared_ranker = None
 
+def get_shared_ranker():
+    global _shared_ranker
+    if _shared_ranker is None:
+        _shared_ranker = MarketStrategyRanker()
+    return _shared_ranker
+
+# Use the shared ranker to avoid redundant memory usage
+strategy_ranker = get_shared_ranker()
+
+logger = logging.getLogger(__name__)
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, value))
@@ -85,10 +95,17 @@ def _select_top_candidates(candidates: list[dict], limit: int = 3) -> list[dict]
     return selected[:limit]
 
 
-def generate_ranked_experiment_candidates(insights: list[dict]) -> list[dict]:
+def generate_ranked_experiment_candidates(insights: list[dict], limit: int = 3) -> list[dict]:
     all_candidates = []
+    ranker = get_shared_ranker()
+    
+    # Optimization: Only process clusters with actual signal data, and limit to top 12
+    # to avoid O(N) slowdown when the database grows.
+    active_insights = [i for i in insights if i.get("evidence_count", 0) > 0]
+    active_insights.sort(key=lambda x: x.get("evidence_count", 0), reverse=True)
+    target_insights = active_insights[:12] if active_insights else insights[:12]
 
-    for insight in insights:
+    for insight in target_insights:
         ml_features = _build_ml_features(insight)
         ml_analysis = ranker.analyze_candidate(ml_features)
         signals = ml_analysis["signals"]
@@ -102,11 +119,12 @@ def generate_ranked_experiment_candidates(insights: list[dict]) -> list[dict]:
                 **candidate,
                 "priority_score": combined_score,
                 "candidate_score": combined_score,
+
                 "ml_features": ml_features,
                 "ml_analysis": ml_analysis,
             })
 
-    return _select_top_candidates(all_candidates, limit=3)
+    return _select_top_candidates(all_candidates, limit=limit)
 
 
 def process_decisions_ml(insights: list[dict]) -> list[dict]:

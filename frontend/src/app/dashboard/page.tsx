@@ -1,5 +1,8 @@
 "use client";
 
+// Force Next.js to never cache this page — always render fresh
+export const dynamic = "force-dynamic";
+
 import React, { useState } from "react";
 import {
   LineChart,
@@ -26,6 +29,7 @@ import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
 import { useEffect } from "react";
+
 
 // ─────────────────────────────────────────────
 // Types
@@ -873,9 +877,10 @@ export default function Dashboard() {
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/[0.05] text-gray-400 font-medium">Decision Layer</span>
                     <span className="text-[9px] px-2 py-1 rounded-md bg-white/[0.05] text-gray-400 font-medium">Trust Layer</span>
                   </div>
-                  <Link href="/experiment-builder" className={`inline-flex items-center gap-2 ${linkColor} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
+                  <Link href={`/experiment-builder?cluster_id=${exp.cluster_id}`} className={`inline-flex items-center gap-2 ${linkColor} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
                     Launch Experiment <span className="text-lg">→</span>
                   </Link>
+
                 </div>
               );
             })}
