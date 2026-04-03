@@ -35,7 +35,8 @@ type TrendPoint = { time: string;[key: string]: string | number };
 type PositioningPoint = { name: string; x: number; y: number; dominant_cluster: string; fill: string };
 type DistributionPoint = { name: string; value: number; fill: string };
 type WhitespacePoint = { competitor: string; x: number; y: number; fill: string };
-type ComparisonPoint = { name: string; pricing: number; quality: number; ai: number; convenience: number };
+type ThemeGroupEntry = { competitor: string; category: string; percentage: number };
+type StrengthGroupEntry = { competitor: string; segments: { label: string; value: number }[] };
 
 interface Experiment {
   insight: string;
@@ -201,7 +202,16 @@ export default function Dashboard() {
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
   const [selectedCompetitor, setSelectedCompetitor] = useState("ALL");
-  const [analysisData, setAnalysisData] = useState<{ trend: { data: any[]; keys: string[] }; themes: any[]; positioning: any[]; whitespace: any[]; strength: any[] } | null>(null);
+  const [availableCompetitors, setAvailableCompetitors] = useState<string[]>([]);
+  const [analysisData, setAnalysisData] = useState<{
+    trend: { data: any[]; keys: string[] };
+    themes: any[];
+    themeCompetitors: string[];
+    positioning: any[];
+    whitespace: any[];
+    strength: any[];
+    strengthLabels: string[];
+  } | null>(null);
   const [summary, setSummary] = useState<any>(null);
 
   useEffect(() => {
@@ -253,22 +263,31 @@ export default function Dashboard() {
           return smoothed;
         });
 
-        // Pivot themes for grouping if ALL, else straightforward
-        let processedThemes = [];
-        if (selectedCompetitor === "ALL") {
-            const themeMap: Record<string, any> = {};
-            for (const item of data.themes) {
-                if (!themeMap[item.category]) themeMap[item.category] = { category: item.category };
-                themeMap[item.category][item.competitor] = item.percentage;
-            }
-            processedThemes = Object.values(themeMap);
-        } else {
-            processedThemes = data.themes.map((t: any, i: number) => ({
-                name: t.category,
-                value: t.percentage,
-                fill: PIE_COLORS[i % PIE_COLORS.length]
-            }));
+        const themeGroups = data.theme_groups || {};
+        const themeCompetitors = Object.keys(themeGroups);
+        if (themeCompetitors.length > 0) {
+          setAvailableCompetitors(themeCompetitors);
         }
+
+        const themeRows = new Map<string, any>();
+        themeCompetitors.forEach((competitorName) => {
+          const entries: ThemeGroupEntry[] = themeGroups[competitorName] || [];
+          entries.forEach((entry) => {
+            if (!themeRows.has(entry.category)) {
+              themeRows.set(entry.category, { category: entry.category });
+            }
+            themeRows.get(entry.category)[competitorName] = entry.percentage;
+          });
+        });
+
+        const processedThemes =
+          selectedCompetitor === "ALL"
+            ? Array.from(themeRows.values())
+            : ((themeGroups[selectedCompetitor] || []) as ThemeGroupEntry[]).map((entry, index) => ({
+                name: entry.category,
+                value: entry.percentage,
+                fill: PIE_COLORS[index % PIE_COLORS.length],
+              }));
 
         // Positioning
         const processedPositioning = data.positioning.map((p: any) => ({
@@ -284,23 +303,38 @@ export default function Dashboard() {
             .map((w: any) => ({
                 competitor: w.competitor,
                 x: w.x,
-                y: w.y,
-                fill: COMP_BRAND_COLORS[w.competitor] || "#60a5fa"
+            y: w.y,
+            fill: COMP_BRAND_COLORS[w.competitor] || "#60a5fa"
             }));
+
+        const processedStrength = ((data.strength_groups || []) as StrengthGroupEntry[]).map((group) => {
+          const row: Record<string, string | number> = { name: group.competitor };
+          group.segments.forEach((segment) => {
+            row[segment.label] = segment.value;
+          });
+          return row;
+        });
 
         setAnalysisData({
           trend: { data: smoothedData, keys: Array.from(compsInTrend) },
           themes: processedThemes,
+          themeCompetitors,
           positioning: processedPositioning,
           whitespace: processedWhitespace,
-          strength: data.strength
+          strength: processedStrength,
+          strengthLabels: data.strength_labels || []
         });
       })
       .catch((e) => console.error("Analysis fetch error", e));
   }, [selectedCompetitor]);
 
-  const strengthKeys = analysisData?.strength?.length > 0 
-    ? Object.keys(analysisData.strength[0]).filter(k => k !== "name") 
+  const strengthKeys = analysisData?.strengthLabels?.length
+    ? [
+        ...analysisData.strengthLabels,
+        ...(analysisData.strength.some((row: any) => Number(row.Others || 0) > 0) ? ["Others"] : []),
+      ]
+    : analysisData?.strength?.length > 0
+      ? Object.keys(analysisData.strength[0]).filter(k => k !== "name")
     : [];
 
   const chartStroke = "rgba(255, 255, 255, 0.05)";
@@ -346,9 +380,9 @@ export default function Dashboard() {
             onChange={(e) => setSelectedCompetitor(e.target.value)}
           >
             <option value="ALL">All Competitors</option>
-            <option value="Urban Company">Urban Company</option>
-            <option value="Housejoy">Housejoy</option>
-            <option value="Sulekha">Sulekha</option>
+            {availableCompetitors.map((competitor) => (
+              <option key={competitor} value={competitor}>{competitor}</option>
+            ))}
           </select>
           <Link
             href="/experiment-builder"
@@ -460,7 +494,7 @@ export default function Dashboard() {
                 <h3 className="font-bold text-xl text-white">Theme Distribution</h3>
                 <p className="text-zinc-500 text-xs mt-1">Dominant market narratives</p>
                 <div className="mt-4 bg-red-500/10 text-red-300 text-[10px] px-3 py-1.5 rounded-lg border border-red-500/20 inline-block font-bold uppercase tracking-widest">
-                  Oversaturated: {MOCK_DISTRIBUTION_DATA[0].name}
+                  Oversaturated: {(analysisData ? (selectedCompetitor === "ALL" ? analysisData.themes[0]?.category : analysisData.themes[0]?.name) : MOCK_DISTRIBUTION_DATA[0].name) || "—"}
                 </div>
               </div>
               <div className="h-64 w-full relative">
@@ -472,9 +506,14 @@ export default function Dashboard() {
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                       <Tooltip content={<CustomTooltip />} />
                       <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", paddingTop: "20px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", lineHeight: "24px" }} />
-                      <Bar dataKey="Urban Company" stackId="a" fill={COMP_BRAND_COLORS["Urban Company"]} />
-                      <Bar dataKey="Housejoy" stackId="a" fill={COMP_BRAND_COLORS["Housejoy"]} />
-                      <Bar dataKey="Sulekha" stackId="a" fill={COMP_BRAND_COLORS["Sulekha"]} />
+                      {(analysisData?.themeCompetitors || []).map((competitor, index) => (
+                        <Bar
+                          key={competitor}
+                          dataKey={competitor}
+                          stackId="a"
+                          fill={COMP_BRAND_COLORS[competitor] || CLUSTER_COLORS[index % CLUSTER_COLORS.length]}
+                        />
+                      ))}
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (

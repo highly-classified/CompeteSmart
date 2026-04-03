@@ -4,6 +4,7 @@ from datetime import datetime
 import logging
 from collections import Counter, defaultdict
 from src import models
+from src.labeling import bucket_top_labels, normalize_theme_label
 from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.trust_layer import compute_trust_score
@@ -23,6 +24,126 @@ logger = logging.getLogger("cache_manager")
 
 # No runtime cleaning function needed anymore. 
 # Labels are cleaned during the ingestion pipeline and stored in `clusters.clean_label`.
+
+
+def _get_target_competitors(db: Session, competitor: str) -> list[str]:
+    query = db.query(models.Competitor.name)
+    if competitor != "ALL":
+        query = query.filter(models.Competitor.name == competitor)
+    return [row[0] for row in query.order_by(models.Competitor.name.asc()).all()]
+
+
+def _load_competitor_theme_counts(db: Session, competitor: str) -> tuple[list[str], dict[str, Counter]]:
+    competitor_names = _get_target_competitors(db, competitor)
+    params = {"comp": competitor} if competitor != "ALL" else {}
+
+    theme_query = f"""
+    SELECT c.name, COALESCE(NULLIF(cl.clean_label, ''), cl.label) AS theme, COUNT(*) AS total
+    FROM signals s
+    JOIN competitors c ON s.competitor_id = c.id
+    JOIN clusters cl ON s.cluster_id = cl.id
+    {"WHERE c.name = :comp" if competitor != "ALL" else ""}
+    GROUP BY c.name, theme;
+    """
+
+    theme_res = db.execute(text(theme_query), params).fetchall()
+
+    competitor_theme_counts = {name: Counter() for name in competitor_names}
+    for comp_name, raw_label, count in theme_res:
+        competitor_theme_counts.setdefault(comp_name, Counter())
+        competitor_theme_counts[comp_name][normalize_theme_label(raw_label)] += int(count)
+
+    return competitor_names, competitor_theme_counts
+
+
+def _build_theme_distribution(
+    competitor_names: list[str],
+    competitor_theme_counts: dict[str, Counter],
+) -> tuple[list[dict], dict[str, list[dict]], dict[str, dict[str, float]]]:
+    themes = []
+    theme_groups = {}
+    normalized_scores = {}
+
+    for comp_name in competitor_names:
+        counts = competitor_theme_counts.get(comp_name, Counter())
+        total = sum(counts.values())
+        normalized_scores[comp_name] = {}
+
+        if total <= 0:
+            theme_groups[comp_name] = []
+            continue
+
+        grouped = []
+        for label, value in bucket_top_labels(counts, top_n=5, include_others=True):
+            percentage = round((value * 100.0 / total), 2)
+            entry = {
+                "competitor": comp_name,
+                "category": label,
+                "percentage": percentage,
+            }
+            grouped.append(entry)
+            themes.append(entry)
+            normalized_scores[comp_name][label] = percentage
+
+        theme_groups[comp_name] = grouped
+
+    return themes, theme_groups, normalized_scores
+
+
+def _build_strength_distribution(
+    competitor_names: list[str],
+    competitor_theme_counts: dict[str, Counter],
+) -> tuple[list[dict], list[dict], list[str]]:
+    normalized_share_sums = Counter()
+    normalized_theme_scores = {}
+
+    for comp_name in competitor_names:
+        counts = competitor_theme_counts.get(comp_name, Counter())
+        total = sum(counts.values())
+        normalized_theme_scores[comp_name] = {}
+        if total <= 0:
+            continue
+
+        for label, value in counts.items():
+            score = round(value / total, 6)
+            normalized_theme_scores[comp_name][label] = score
+            normalized_share_sums[label] += score
+
+    top_labels = [label for label, _ in bucket_top_labels(normalized_share_sums, top_n=5, include_others=False)]
+
+    strength = []
+    strength_groups = []
+    for comp_name in competitor_names:
+        counts = competitor_theme_counts.get(comp_name, Counter())
+        total = sum(counts.values())
+        row = {"name": comp_name}
+        segments = []
+        others_share = 0.0
+
+        if total > 0:
+            for label, score in normalized_theme_scores.get(comp_name, {}).items():
+                if label not in top_labels:
+                    others_share += score
+
+        for label in top_labels:
+            normalized_value = round(normalized_theme_scores.get(comp_name, {}).get(label, 0.0) * 100, 2)
+            row[label] = normalized_value
+            segments.append({"label": label, "value": normalized_value})
+
+        if others_share > 0:
+            others_value = round(others_share * 100, 2)
+            row["Others"] = others_value
+            segments.append({"label": "Others", "value": others_value})
+        elif top_labels:
+            row["Others"] = 0.0
+
+        strength.append(row)
+        strength_groups.append({
+            "competitor": comp_name,
+            "segments": segments,
+        })
+
+    return strength, strength_groups, top_labels
 
 
 def refresh_dashboard_cache(db: Session):
@@ -127,6 +248,7 @@ def compute_summary_insights(db: Session):
 def compute_competitor_analysis(db: Session, competitor: str):
     where_clause = "WHERE c.name = :comp" if competitor != "ALL" else ""
     params = {"comp": competitor} if competitor != "ALL" else {}
+    competitor_names, competitor_theme_counts = _load_competitor_theme_counts(db, competitor)
 
     # Trends
     trend_query = f"""
@@ -138,33 +260,7 @@ def compute_competitor_analysis(db: Session, competitor: str):
     trend_res = db.execute(text(trend_query), params).fetchall()
     trends = [{"competitor": r[0], "month": r[1], "activity": float(r[2])} for r in trend_res]
 
-    theme_query = f"""
-    SELECT c.name, COALESCE(NULLIF(cl.clean_label, ''), cl.label) AS theme, COUNT(*)
-    FROM signals s 
-    JOIN competitors c ON s.competitor_id = c.id
-    JOIN clusters cl ON s.cluster_id = cl.id
-    {"WHERE c.name = :comp" if competitor != "ALL" else ""}
-    GROUP BY 1, 2;
-    """
-
-    theme_res = db.execute(text(theme_query), params).fetchall()
-
-    competitor_theme_counts = defaultdict(Counter)
-    for comp_name, raw_label, count in theme_res:
-        competitor_theme_counts[comp_name][normalize_theme_label(raw_label)] += int(count)
-
-    themes = []
-    for comp_name, counts in competitor_theme_counts.items():
-        total = sum(counts.values())
-        if total <= 0:
-            continue
-
-        for label, value in bucket_top_labels(counts, top_n=5, include_others=True):
-            themes.append({
-                "competitor": comp_name,
-                "category": label,
-                "percentage": round((value * 100.0 / total), 2)
-            })
+    themes, theme_groups, _ = _build_theme_distribution(competitor_names, competitor_theme_counts)
 
 
     # Pos
@@ -214,32 +310,22 @@ def compute_competitor_analysis(db: Session, competitor: str):
             "y": y_score
         })
 
-    # Strength (Dynamic Pivot of Top Themes)
-    global_theme_counter = Counter()
-    for counts in competitor_theme_counts.values():
-        global_theme_counter.update(counts)
-    top_labels = [label for label, _ in bucket_top_labels(global_theme_counter, top_n=5, include_others=False)]
-
-    strength = []
-    if top_labels:
-        for comp_name, counts in competitor_theme_counts.items():
-            row = {"name": comp_name}
-            has_value = False
-            for label in top_labels:
-                value = float(counts.get(label, 0))
-                if value > 0:
-                    has_value = True
-                row[label] = value
-            if has_value:
-                strength.append(row)
+    # Strength (Normalized per competitor so high-volume brands do not dominate)
+    strength, strength_groups, strength_labels = _build_strength_distribution(
+        competitor_names,
+        competitor_theme_counts,
+    )
 
 
     return {
         "trend": trends,
         "themes": themes,
+        "theme_groups": theme_groups,
         "positioning": positioning,
         "whitespace": whitespace,
-        "strength": strength
+        "strength": strength,
+        "strength_groups": strength_groups,
+        "strength_labels": strength_labels,
     }
 
 def compute_suggested_experiments(db: Session):
