@@ -1,0 +1,17 @@
+[
+  {
+    "cluster_name": "Electrical",
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'Electrical' to capture untapped segment.",
+    "ml_predicted_score": 0.8328294361119889
+  },
+  {
+    "cluster_name": "General Service",
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'General Service' to capture untapped segment.",
+    "ml_predicted_score": 0.8328294361119889
+  },
+  {
+    "cluster_name": "General Service",
+    "recommended_action": "Test budget-conscious-focused pricing with relevant messaging in 'General Service' to capture untapped segment.",
+    "ml_predicted_score": 0.8328294361119889
+  }
+]

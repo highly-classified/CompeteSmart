@@ -26,6 +26,11 @@ load_dotenv()
 
 from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
 from src.execution_copilot import chat_with_experiment
+from src.ml_model import MarketStrategyRanker
+
+# Initialize Strategy Ranker
+strategy_ranker = MarketStrategyRanker()
+
 
 # Dynamic Theme Mapping Layer (Requested)
 DYNAMIC_THEME = case(
@@ -510,16 +515,39 @@ def get_suggested_experiments(db: Session = Depends(get_db)):
     if cache_entry and cache_entry.data:
         return cache_entry.data
         
-    # 2. Fallback to Legacy JSON file
+    # 2. Primary Fallback: ML Standalone Results
+    ml_output_path = "ml_standalone_results.json"
+    if os.path.exists(ml_output_path):
+        try:
+            with open(ml_output_path, "r") as f:
+                # Map ML standalone results to the expected schema
+                data = json.load(f)
+                formatted = []
+                for item in data:
+                    formatted.append({
+                        "insight": f"ML Model Confidence: {item['ml_predicted_score']:.2f}",
+                        "cluster_id": item['cluster_name'],
+                        "trend": "High Priority",
+                        "confidence": item['ml_predicted_score'],
+                        "risk": 0.3,
+                        "recommended_action": item['recommended_action'],
+                        "evidence": []
+                    })
+                return formatted
+        except Exception as e:
+            logger.error(f"Error reading ML standalone file: {e}")
+
+    # 3. Secondary Fallback: Original JSON (Backup)
     output_path = "decision_layer_output.json"
     if os.path.exists(output_path):
         try:
             with open(output_path, "r") as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Error reading decision output file: {e}")
+            logger.error(f"Error reading legacy output file: {e}")
     
     return []
+
 
 @app.post("/api/copilot/chat", response_model=CopilotChatResponse)
 def copilot_chat(request: CopilotChatRequest):
@@ -830,12 +858,28 @@ async def simulate_endpoint(websocket: WebSocket):
         for i in range(1, max_iterations + 1):
             month = month_names[i % 12]
             
-            # Pick a strategy we haven't used yet
-            available = [s for s in strategies if s["name"] not in used_strategies]
-            if not available:
-                available = strategies
-            strategy = random.choice(available)
+            # Use ML model to pick the best strategy from the available pool
+            if available:
+                # Prepare features for each candidate strategy
+                scored_candidates = []
+                for s in available:
+                    feat = {
+                        "momentum": min(1.0, momentum / 5.0), # normalized
+                        "saturation": sat / 100.0,
+                        "risk": s["risk"],
+                        "evidence_count": 5 # assumed for simulation context
+                    }
+                    s["ml_score"] = strategy_ranker.predict_score(feat)
+                    scored_candidates.append(s)
+                
+                # Sort by ML score
+                scored_candidates.sort(key=lambda x: x["ml_score"], reverse=True)
+                strategy = scored_candidates[0]
+            else:
+                strategy = random.choice(strategies)
+            
             used_strategies.append(strategy["name"])
+
             
             # ── Data-Driven Probability Engine ──
             base_chance = 1.0 - strategy["risk"]
