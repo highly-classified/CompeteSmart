@@ -274,14 +274,29 @@ export default function Dashboard() {
       .catch(e => console.error("Summary fetch error", e));
 
     fetch("/api/experiments")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          console.log("Suggested experiment payload", data);
-          setExperiments(data.slice(0, 3));
-        } else {
-          setExperiments([]);
+      .then(async (res) => {
+        const rawText = await res.text();
+        let payload: any;
+        try {
+          payload = rawText ? JSON.parse(rawText) : [];
+        } catch {
+          throw new Error(rawText || "API returned non-JSON response");
         }
+
+        if (!res.ok) {
+          throw new Error(payload?.error || "Experiments API error");
+        }
+
+        return payload;
+      })
+      .then(data => {
+        const experimentList = Array.isArray(data) ? data : Array.isArray(data?.experiments) ? data.experiments : [];
+        console.log("Suggested experiment payload", experimentList);
+
+        if (experimentList.length === 0) {
+            console.warn("No structured experiments were returned by /api/experiments");
+        }
+        setExperiments(experimentList.slice(0, 3));
       })
       .catch(e => console.error("Experiments fetch error", e));
   }, []);
@@ -761,6 +776,17 @@ export default function Dashboard() {
           <h2 className="text-[20px] uppercase tracking-[0.3em] text-zinc-300 font-black mb-6 flex items-center gap-3">
             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
+          {experiments.length === 0 ? (
+            <div className="pb-20">
+              <div className="rounded-[2rem] border border-white/10 bg-zinc-950 px-8 py-10">
+                <p className="text-white text-lg font-semibold mb-2">No structured experiments are available right now.</p>
+                <p className="text-gray-300 text-sm leading-relaxed">
+                  This usually means the backend returned an empty experiment list, the structured experiment cache has not been regenerated yet,
+                  or the API is still serving stale data from before the new pipeline was connected.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
             {experiments.slice(0, 3).map((exp, index) => {
               const activeExperiment = exp.experiment || exp.recommended_action;
@@ -853,6 +879,7 @@ export default function Dashboard() {
               );
             })}
           </div>
+          )}
         </div>
 
       </div>

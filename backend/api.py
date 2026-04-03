@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, case
+from datetime import datetime
 from src.database import get_db, engine, SessionLocal
 from src import models
 from src.intelligence.clustering import ClusteringEngine
@@ -24,7 +27,12 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
+from src.cache_manager import (
+    refresh_dashboard_cache,
+    compute_summary_insights,
+    compute_competitor_analysis,
+    compute_suggested_experiments,
+)
 from src.execution_copilot import chat_with_experiment
 from src.ml_model import MarketStrategyRanker
 
@@ -232,6 +240,17 @@ def _normalize_experiments(items: Any) -> List[Dict[str, Any]]:
         return []
     normalized = [_normalize_experiment(item) for item in items if isinstance(item, dict)]
     return normalized[:3]
+
+
+def _is_structured_experiment_payload(items: Any) -> bool:
+    if not isinstance(items, list) or not items:
+        return False
+
+    sample = items[0]
+    if not isinstance(sample, dict):
+        return False
+
+    return all(field in sample for field in ("experiment", "hypothesis", "expected_impact", "traceability"))
 
 @app.on_event("startup")
 def startup_db():
@@ -685,51 +704,67 @@ def get_chart_risk_saturation(client_id: int, db: Session = Depends(get_db), use
 @app.get("/api/experiments")
 def get_suggested_experiments(db: Session = Depends(get_db)):
     """Returns the latest experiment recommendations from the database cache (with JSON fallback)."""
-    # 1. Try Dataset Cache (Database)
-    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
-    if cache_entry and cache_entry.data:
-        return _normalize_experiments(cache_entry.data)
+    try:
+        # 1. Try Dataset Cache (Database)
+        cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
+        if cache_entry and cache_entry.data:
+            if _is_structured_experiment_payload(cache_entry.data):
+                response = _normalize_experiments(cache_entry.data)
+                print("API Response (cache):", response)
+                return JSONResponse(content=jsonable_encoder(response))
+
+            print("Stale suggested_experiments cache detected. Regenerating structured experiments...")
+
+        # 2. Force regeneration from the new ML -> decision -> experiment pipeline
+        regenerated = compute_suggested_experiments(db)
+        print("Final Experiments:", regenerated)
+        if regenerated:
+            cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
+            if cache_entry:
+                cache_entry.data = regenerated
+                cache_entry.last_updated = datetime.utcnow()
+            else:
+                db.add(models.DashboardCache(key="suggested_experiments", data=regenerated))
+            db.commit()
+            response = _normalize_experiments(regenerated)
+            print("API Response (regenerated):", response)
+            return JSONResponse(content=jsonable_encoder(response))
+    except Exception as e:
+        logger.error(f"Failed to regenerate suggested experiments: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "experiments": []},
+        )
         
-    # 2. Primary Fallback: ML Standalone Results
+    # 3. Primary Fallback: ML Standalone Results
     ml_output_path = "ml_standalone_results.json"
     if os.path.exists(ml_output_path):
         try:
             with open(ml_output_path, "r") as f:
-                # Map ML standalone results to the expected schema
                 data = json.load(f)
-                formatted = []
-                for item in data:
-                    formatted.append({
-                        "title": item.get("cluster_name"),
-                        "insight": f"ML Model Confidence: {item['ml_predicted_score']:.2f}",
-                        "cluster_id": item.get("cluster_id") or item.get("cluster_name"),
-                        "cluster_name": item.get("cluster_name"),
-                        "trend": item.get("priority", "High Priority"),
-                        "confidence": item.get("ml_predicted_score"),
-                        "risk": item.get("risk", 0.3),
-                        "recommended_action": item.get("recommended_action", ""),
-                        "traceability": {
-                            "summary": item.get("insight", ""),
-                            "total_signals": 0,
-                            "sample_signals": item.get("evidence", []),
-                            "competitor_ids": [],
-                        },
-                        "evidence": item.get("evidence", [])
-                    })
-                return _normalize_experiments(formatted)
+                if _is_structured_experiment_payload(data):
+                    response = _normalize_experiments(data)
+                    print("API Response (ml fallback):", response)
+                    return JSONResponse(content=jsonable_encoder(response))
+                print("Skipping ml_standalone_results.json because it is not using the structured experiment schema.")
         except Exception as e:
             logger.error(f"Error reading ML standalone file: {e}")
 
-    # 3. Secondary Fallback: Original JSON (Backup)
+    # 4. Secondary Fallback: Original JSON (Backup)
     output_path = "decision_layer_output.json"
     if os.path.exists(output_path):
         try:
             with open(output_path, "r") as f:
-                return _normalize_experiments(json.load(f))
+                data = json.load(f)
+                if _is_structured_experiment_payload(data):
+                    response = _normalize_experiments(data)
+                    print("API Response (legacy fallback):", response)
+                    return JSONResponse(content=jsonable_encoder(response))
+                print("Skipping decision_layer_output.json because it is using the legacy experiment schema.")
         except Exception as e:
             logger.error(f"Error reading legacy output file: {e}")
     
-    return []
+    return JSONResponse(content={"experiments": [], "message": "No structured experiments are available."})
 
 
 @app.post("/api/copilot/chat", response_model=CopilotChatResponse)

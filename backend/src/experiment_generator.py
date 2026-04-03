@@ -1,5 +1,5 @@
 from src.decision_engine import build_traceability_reasons
-
+from datetime import datetime
 
 def _impact_from_signals(decision_type: str, signals: dict[str, float]) -> int:
     price_sensitivity = float(signals.get("price_sensitivity", 0.0) or 0.0)

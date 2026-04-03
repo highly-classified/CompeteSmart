@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
+from typing import Any
 import logging
 import math
 import re
@@ -236,7 +237,7 @@ def refresh_dashboard_cache(db: Session):
     db.commit()
     logger.info("Dashboard Cache Refresh Complete.")
 
-def upsert_cache(db: Session, key: str, data: dict):
+def upsert_cache(db: Session, key: str, data: Any):
     cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == key).first()
     if cache_entry:
         cache_entry.data = data
@@ -483,6 +484,7 @@ def compute_suggested_experiments(db: Session):
                     "model_family": ml_analysis.get("model_family"),
                 },
             })
+            print("Generated Experiment:", structured_experiment)
             final_experiments.append(structured_experiment)
             
         return final_experiments
