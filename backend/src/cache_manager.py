@@ -4,7 +4,20 @@ from datetime import datetime
 import logging
 from collections import Counter, defaultdict
 from src import models
-from src.labeling import bucket_top_labels, normalize_theme_label
+from src.intelligence.temporal import TemporalEngine
+from src.intelligence.advanced import AdvancedIntelligenceEngine
+from src.trust_layer import compute_trust_score
+import sys
+import os
+
+# Append parent dir to path to reach decision_layer.py if needed, 
+# but usually PYTHONPATH handles this in the repo structure.
+try:
+    from decision_layer import process_decisions
+except ImportError:
+    # Fallback for different execution contexts
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from decision_layer import process_decisions
 
 logger = logging.getLogger("cache_manager")
 
@@ -33,6 +46,11 @@ def refresh_dashboard_cache(db: Session):
         comp_analysis = compute_competitor_analysis(db, comp.name)
         upsert_cache(db, f"comp_analysis_{comp.name}", comp_analysis)
         
+    # 4. Suggested Experiments (NEW)
+    logger.info("Refreshing Suggested Experiments...")
+    experiments = compute_suggested_experiments(db)
+    upsert_cache(db, "suggested_experiments", experiments)
+
     db.commit()
     logger.info("Dashboard Cache Refresh Complete.")
 
@@ -223,3 +241,78 @@ def compute_competitor_analysis(db: Session, competitor: str):
         "whitespace": whitespace,
         "strength": strength
     }
+
+def compute_suggested_experiments(db: Session):
+    """
+    Consolidates intelligence insights and runs the decision layer to generate
+    recommended experiments, then persists them to the cache.
+    """
+    try:
+        # 1. Gather Intelligence Data
+        temp_engine = TemporalEngine(db)
+        trends = temp_engine.calculate_trends()
+        saturations = temp_engine.calculate_saturation()
+        
+        adv_engine = AdvancedIntelligenceEngine(db)
+        whitespaces = adv_engine.detect_whitespace()
+        
+        # 2. Consolidate into Insights for Decision Layer
+        insights = []
+        for t in trends:
+            c_id = t["cluster_id"]
+            # Find matching saturation mapping
+            s_match = next((s for s in saturations if s["cluster_id"] == c_id), None)
+            sat_score = s_match["saturation_score"] if s_match else 0.0
+            
+            # Map detected whitespace vectors into themes (logic from prototype_pipeline)
+            # In production this can be further refined
+            w_personas = ["budget-conscious", "untapped-niche"] if whitespaces else []
+            
+            insights.append({
+                "cluster_id": c_id,
+                "cluster_name": t["cluster_label"] or "Untitled Cluster",
+                "trend": t["growth_rate"],
+                "saturation": sat_score,
+                "whitespace_personas": w_personas
+            })
+            
+        if not insights:
+            logger.warning("No insights found to generate experiments.")
+            return []
+
+        # 3. Run Decision Layer
+        decisions = process_decisions(insights)
+        
+        # 4. Enrich with Trust & Risk Layer
+        final_experiments = []
+        for decision in decisions:
+            cluster_id = decision["cluster_id"]
+            experiment_text = decision["experiment"]
+            
+            try:
+                trust_output = compute_trust_score(
+                    cluster_id=cluster_id, 
+                    experiment=experiment_text, 
+                    client_positioning="premium"
+                )
+            except Exception as e:
+                logger.error(f"Trust score calculation failed for {cluster_id}: {e}")
+                trust_output = {"risk_score": 0.5, "risk_level": "medium", "explanation": "Trust calculation failed."}
+            
+            final_experiments.append({
+                "cluster_id": cluster_id,
+                "cluster_name": decision["cluster_name"],
+                "decision": {
+                    "priority_label": decision["priority"],
+                    "priority_score": decision["priority_score"],
+                    "experiment": experiment_text,
+                    "counterfactual": decision["counterfactual"]
+                },
+                "trust_and_risk": trust_output
+            })
+            
+        return final_experiments
+        
+    except Exception as e:
+        logger.error(f"Failed to compute suggested experiments: {e}")
+        return []

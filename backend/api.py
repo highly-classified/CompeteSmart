@@ -278,9 +278,24 @@ def run_pipeline(background_tasks: BackgroundTasks, db: Session = Depends(get_db
     1. Scans DB for raw teammate signals and auto-embeds them (sync).
     2. Runs HDBSCAN semantic grouping algorithm.
     """
-    engine = ClusteringEngine(db)
-    background_tasks.add_task(engine.run_clustering)
-    return {"status": "success", "message": "Intelligence pipeline triggered asynchronously in background!"}
+    # Correctly handle sessions in background tasks
+    def full_pipeline_update():
+        from src.database import SessionLocal
+        new_db = SessionLocal()
+        try:
+            # 1. Clustering
+            engine = ClusteringEngine(new_db)
+            engine.run_clustering()
+            # 2. Refresh Dashboard Cache
+            refresh_dashboard_cache(new_db)
+            logger.info("Background full pipeline update completed.")
+        except Exception as e:
+            logger.error(f"Background pipeline update failed: {e}")
+        finally:
+            new_db.close()
+
+    background_tasks.add_task(full_pipeline_update)
+    return {"status": "success", "message": "Intelligence pipeline and cache refresh triggered!"}
 
 @app.get("/api/insights/trends", response_model=List[TrendResult])
 def get_trends(db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -362,10 +377,18 @@ def get_competitor_analysis(competitor: str = "ALL", db: Session = Depends(get_d
     return data
 
 @app.post("/api/refresh-cache")
-def trigger_cache_refresh(db: Session = Depends(get_db)):
-    """Force rebuild the entire dashboard cache"""
-    refresh_dashboard_cache(db)
-    return {"status": "success", "message": "Dashboard cache rebuilt"}
+def trigger_cache_refresh(background_tasks: BackgroundTasks):
+    """Force rebuild the entire dashboard cache in the background"""
+    def background_refresh():
+        from src.database import SessionLocal
+        db = SessionLocal()
+        try:
+            refresh_dashboard_cache(db)
+        finally:
+            db.close()
+            
+    background_tasks.add_task(background_refresh)
+    return {"status": "success", "message": "Dashboard cache rebuild triggered in background"}
 
 @app.get("/api/charts/opportunity")
 def get_chart_opportunity(client_id: int, db: Session = Depends(get_db), user_id: str = Depends(get_current_user)):
@@ -480,18 +503,23 @@ def get_chart_risk_saturation(client_id: int, db: Session = Depends(get_db), use
 # ==========================================
 
 @app.get("/api/experiments")
-def get_suggested_experiments():
-    """Returns the latest experiment recommendations from the decision layer."""
+def get_suggested_experiments(db: Session = Depends(get_db)):
+    """Returns the latest experiment recommendations from the database cache (with JSON fallback)."""
+    # 1. Try Dataset Cache (Database)
+    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
+    if cache_entry and cache_entry.data:
+        return cache_entry.data
+        
+    # 2. Fallback to Legacy JSON file
     output_path = "decision_layer_output.json"
-    if not os.path.exists(output_path):
-        return []
+    if os.path.exists(output_path):
+        try:
+            with open(output_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading decision output file: {e}")
     
-    try:
-        with open(output_path, "r") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Error reading decision output: {e}")
-        return []
+    return []
 
 @app.post("/api/copilot/chat", response_model=CopilotChatResponse)
 def copilot_chat(request: CopilotChatRequest):
