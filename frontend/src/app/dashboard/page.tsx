@@ -55,6 +55,7 @@ interface Experiment {
 const CLUSTER_COLORS = ["#a78bfa", "#f87171", "#60a5fa", "#fbbf24", "#34d399", "#f472b6"];
 const COMP_BRAND_COLORS: Record<string, string> = {
   "Urban Company": "#a78bfa", // Purple
+  "Housejoy": "#34d399", // Green
   "House Joy": "#34d399", // Green
   "Sulekha": "#fbbf24", // Yellow
 };
