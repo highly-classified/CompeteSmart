@@ -34,7 +34,7 @@ import { useEffect } from "react";
 type TrendPoint = { time: string;[key: string]: string | number };
 type PositioningPoint = { name: string; x: number; y: number; dominant_cluster: string; fill: string };
 type DistributionPoint = { name: string; value: number; fill: string };
-type WhitespacePoint = { name: string; x: number; y: number; fill: string };
+type WhitespacePoint = { competitor: string; x: number; y: number; fill: string };
 type ComparisonPoint = { name: string; pricing: number; quality: number; ai: number; convenience: number };
 
 interface Experiment {
@@ -163,9 +163,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const ScatterTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const name = data.competitor || data.name || "Unknown";
+    const xLabel = data.competitor ? "Competition" : "X";
+    const yLabel = data.competitor ? "Growth" : "Y";
+
     return (
       <div className="bg-zinc-900/95 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl text-sm ring-1 ring-white/5">
-        <p className="font-bold text-white mb-2 pb-2 border-b border-white/5">{data.name}</p>
+        <p className="font-bold text-white mb-2 pb-2 border-b border-white/5">{name}</p>
         <div className="space-y-1">
           {data.dominant_cluster && (
             <div className="flex items-center justify-between gap-4">
@@ -173,20 +177,12 @@ const ScatterTooltip = ({ active, payload }: any) => {
               <span className="text-white font-mono text-xs">{data.dominant_cluster}</span>
             </div>
           )}
-          {data.quadrant && (
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-zinc-400">Quadrant:</span>
-              <span className="font-mono font-medium" style={{ color: data.fill }}>
-                {data.quadrant}
-              </span>
-            </div>
-          )}
           <div className="flex items-center justify-between gap-4">
-            <span className="text-zinc-400">X:</span>
+            <span className="text-zinc-400">{xLabel}:</span>
             <span className="text-white font-mono">{data.x}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span className="text-zinc-400">Y:</span>
+            <span className="text-zinc-400">{yLabel}:</span>
             <span className="text-white font-mono">{data.y}</span>
           </div>
         </div>
@@ -283,33 +279,29 @@ export default function Dashboard() {
             fill: COMP_BRAND_COLORS[p.competitor] || "#60a5fa"
         }));
 
-        const processedWhitespace = data.whitespace.map((w: any) => ({
-            name: w.competitor,
-            x: w.x,
-            y: w.y,
-            quadrant: w.quadrant,
-            fill: QUADRANT_FILLS[w.quadrant] || "#60a5fa"
-        }));
-
-        const processedStrength = data.strength.map((s: any) => ({
-            name: s.competitor,
-            pricing: s.pricing,
-            quality: s.quality,
-            convenience: s.convenience,
-            ai: s.ai,
-            activity_score: s.activity_score
-        }));
+        const processedWhitespace = data.whitespace
+            .filter((w: any) => w.competitor)
+            .map((w: any) => ({
+                competitor: w.competitor,
+                x: w.x,
+                y: w.y,
+                fill: COMP_BRAND_COLORS[w.competitor] || "#60a5fa"
+            }));
 
         setAnalysisData({
           trend: { data: smoothedData, keys: Array.from(compsInTrend) },
           themes: processedThemes,
           positioning: processedPositioning,
           whitespace: processedWhitespace,
-          strength: processedStrength
+          strength: data.strength
         });
       })
-      .catch((e) => console.error(e));
+      .catch((e) => console.error("Analysis fetch error", e));
   }, [selectedCompetitor]);
+
+  const strengthKeys = analysisData?.strength?.length > 0 
+    ? Object.keys(analysisData.strength[0]).filter(k => k !== "name") 
+    : [];
 
   const chartStroke = "rgba(255, 255, 255, 0.05)";
   const axisColor = "rgba(255, 255, 255, 0.4)";
@@ -555,27 +547,39 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="h-72 w-full relative">
-                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Comp ⟷ High Comp</span>
-                <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Low Growth ⟷ High Growth</span>
+                <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Density ⟷ Niche</span>
+                <span className="absolute left-1 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold tracking-[0.2em] uppercase text-zinc-600">Growth ⟷ Decay</span>
                 <ResponsiveContainer width="100%" height="100%">
                   <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid stroke={chartStroke} />
-                    <ReferenceArea x1={0} x2={50} y1={50} y2={100} fill="#34d399" fillOpacity={0.04} />
-                    <ReferenceArea x1={50} x2={100} y1={0} y2={50} fill="#f87171" fillOpacity={0.04} />
-                    <XAxis type="number" dataKey="x" name="Competition" domain={[0, 100]} hide />
-                    <YAxis type="number" dataKey="y" name="Growth" domain={[0, 100]} hide />
+                    <CartesianGrid stroke={chartStroke} strokeDasharray="3 3" opacity={0.1} />
+                    
+                    {/* Quadrant Shadows */}
+                    <ReferenceArea x1={0} x2={0.5} y1={0} y2={1} fill="#34d399" fillOpacity={0.03} />
+                    <ReferenceArea x1={0.5} x2={1} y1={-1} y2={0} fill="#f87171" fillOpacity={0.03} />
+
+                    <XAxis type="number" dataKey="x" name="Competition" domain={[0, 1]} hide />
+                    <YAxis type="number" dataKey="y" name="Growth" domain={[-1, 1]} hide />
                     <ZAxis range={[300, 800]} />
                     <Tooltip content={<ScatterTooltip />} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
-                    {(analysisData ? analysisData.whitespace : []).map((entry: any, index: number) => (
-                      <Scatter key={index} name={entry.name} data={[entry]} fill={entry.fill} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
+                    {(analysisData?.whitespace || []).map((entry: any, index: number) => (
+                      <Scatter key={index} name={entry.competitor} data={[entry]} fill={entry.fill} />
                     ))}
                   </ScatterChart>
                 </ResponsiveContainer>
-                <div className="absolute top-[15%] left-[15%] pointer-events-none opacity-40">
-                  <span className="text-[9px] font-black tracking-widest uppercase text-emerald-400">Golden Opportunity</span>
+                
+                {/* Quadrant Labels */}
+                <div className="absolute top-[10%] left-[10%] pointer-events-none">
+                  <span className="text-[8px] font-black tracking-widest uppercase text-emerald-400/40">Opportunity</span>
                 </div>
-                <div className="absolute bottom-[15%] right-[15%] pointer-events-none opacity-40">
-                  <span className="text-[9px] font-black tracking-widest uppercase text-red-400">Avoid Zone</span>
+                <div className="absolute top-[10%] right-[10%] pointer-events-none">
+                  <span className="text-[8px] font-black tracking-widest uppercase text-blue-400/40">Competitive Growth</span>
+                </div>
+                <div className="absolute bottom-[10%] left-[10%] pointer-events-none">
+                  <span className="text-[8px] font-black tracking-widest uppercase text-zinc-400/40">Low Priority</span>
+                </div>
+                <div className="absolute bottom-[10%] right-[10%] pointer-events-none">
+                  <span className="text-[8px] font-black tracking-widest uppercase text-red-400/40">Saturated</span>
                 </div>
               </div>
             </div>
@@ -584,13 +588,14 @@ export default function Dashboard() {
             <div className="bg-zinc-900/40 backdrop-blur-sm border border-white/5 p-8 rounded-[2.5rem] shadow-2xl">
               <div className="flex justify-between items-start mb-10">
                 <div>
-                  <h3 className="font-bold text-xl text-white">Competitor Strength</h3>
-                  <p className="text-zinc-500 text-xs mt-1">Cross-brand pillar indexing</p>
+                  <h3 className="font-bold text-xl text-white">Market Segment Strength</h3>
+                  <p className="text-zinc-500 text-xs mt-1">Signal volume by top segments</p>
                 </div>
                 <div className="bg-blue-500/10 text-blue-300 text-[10px] px-3 py-1.5 rounded-lg border border-blue-500/20 font-bold uppercase tracking-widest">
-                  Scoring: 4 Pillars
+                  Scoring: Top Segments
                 </div>
               </div>
+
               <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={analysisData ? analysisData.strength : []} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
@@ -599,10 +604,17 @@ export default function Dashboard() {
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: axisColor, fontWeight: 600 }} />
                     <Tooltip content={<CustomTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
                     <Legend wrapperStyle={{ fontSize: "10px", paddingTop: "15px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }} />
-                    <Bar dataKey="pricing" name="Pricing" fill={COMPETITOR_COLORS.pricing} radius={[6, 6, 0, 0]} barSize={16} />
-                    <Bar dataKey="quality" name="Quality" fill={COMPETITOR_COLORS.quality} radius={[6, 6, 0, 0]} barSize={16} />
-                    <Bar dataKey="ai" name="AI / Tech" fill={COMPETITOR_COLORS.ai} radius={[6, 6, 0, 0]} barSize={16} />
-                    <Bar dataKey="convenience" name="Convenience" fill={COMPETITOR_COLORS.convenience} radius={[6, 6, 0, 0]} barSize={16} />
+                    {strengthKeys.map((key, i) => (
+                      <Bar 
+                        key={key} 
+                        dataKey={key} 
+                        name={key} 
+                        fill={CLUSTER_COLORS[i % CLUSTER_COLORS.length]} 
+                        radius={[6, 6, 0, 0]} 
+                        barSize={16} 
+                      />
+                    ))}
+
                   </BarChart>
                 </ResponsiveContainer>
               </div>

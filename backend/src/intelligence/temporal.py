@@ -13,7 +13,7 @@ class TemporalEngine:
         t_prev_start = t_current_start - timedelta(days=days_window)
  
         # Filter clusters to only those that have signals from the client's competitors
-        query = self.db.query(Cluster)
+        query = self.db.query(Cluster).filter(Cluster.clean_label != "")
         if client_id:
             query = query.join(Signal, Cluster.id == Signal.cluster_id).join(Competitor, Signal.competitor_id == Competitor.id).filter(Competitor.client_id == client_id)
         
@@ -52,7 +52,7 @@ class TemporalEngine:
  
             results.append({
                 "cluster_id": cluster.id,
-                "cluster_label": cluster.label,
+                "cluster_label": cluster.clean_label,
                 "current_count": f_t,
                 "previous_count": f_t_minus_1,
                 "growth_rate": round(growth_rate, 4),
@@ -71,7 +71,7 @@ class TemporalEngine:
             return []
  
         # Filter clusters to those with client signals
-        cluster_query = self.db.query(Cluster)
+        cluster_query = self.db.query(Cluster).filter(Cluster.clean_label != "")
         if client_id:
             cluster_query = cluster_query.join(Signal, Cluster.id == Signal.cluster_id).join(Competitor, Signal.competitor_id == Competitor.id).filter(Competitor.client_id == client_id)
         
@@ -98,7 +98,7 @@ class TemporalEngine:
  
             results.append({
                 "cluster_id": cluster.id,
-                "cluster_label": cluster.label,
+                "cluster_label": cluster.clean_label,
                 "saturation_score": round(s_j, 4),
                 "status": status,
                 "competitors_using": c_j,

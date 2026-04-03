@@ -49,12 +49,14 @@ class Signal(Base):
     content = Column(Text, nullable=False)
     category = Column(Text) 
     cluster_id = Column(Text, nullable=True) 
+    confidence = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Cluster(Base):
     __tablename__ = "clusters"
     id = Column(Text, primary_key=True)
     label = Column(Text)
+    clean_label = Column(Text)
     description = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 

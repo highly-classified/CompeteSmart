@@ -112,7 +112,7 @@ def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id
     # Join Signal -> Cluster to get the readable label
     results = (
         db.query(
-            models.Cluster.label.label("cluster_name"),
+            models.Cluster.clean_label.label("cluster_name"),
             func.to_char(models.Snapshot.created_at, "YYYY-MM").label("month"),
             func.count(models.Signal.id).label("count")
         )
@@ -120,9 +120,10 @@ def get_competitor_trends(client_id: int, db: Session = Depends(get_db), user_id
         .join(models.Competitor, models.Signal.competitor_id == models.Competitor.id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
+        .filter(models.Cluster.clean_label != "")
         .filter(models.Signal.cluster_id.isnot(None))
-        .group_by(models.Cluster.label, "month")
-        .order_by(models.Cluster.label, "month")
+        .group_by(models.Cluster.clean_label, "month")
+        .order_by(models.Cluster.clean_label, "month")
         .all()
     )
 
@@ -161,14 +162,15 @@ def get_competitor_positioning(client_id: int, db: Session = Depends(get_db), us
     stats = (
         db.query(
             models.Competitor.name,
-            func.count(models.Signal.id).filter(models.Cluster.label.op("~*")(premium_p)).label("premium"),
-            func.count(models.Signal.id).filter(models.Cluster.label.op("~*")(affordable_p)).label("affordable"),
-            func.count(models.Signal.id).filter(models.Cluster.label.op("~*")(outcome_p)).label("outcome"),
-            func.count(models.Signal.id).filter(models.Cluster.label.op("~*")(feature_p)).label("feature")
+            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(premium_p)).label("premium"),
+            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(affordable_p)).label("affordable"),
+            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(outcome_p)).label("outcome"),
+            func.count(models.Signal.id).filter(models.Cluster.clean_label.op("~*")(feature_p)).label("feature")
         )
         .join(models.Signal, models.Competitor.id == models.Signal.competitor_id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
+        .filter(models.Cluster.clean_label != "")
         .group_by(models.Competitor.name)
         .all()
     )
@@ -178,14 +180,15 @@ def get_competitor_positioning(client_id: int, db: Session = Depends(get_db), us
     dominant_clusters = (
         db.query(
             models.Competitor.name,
-            models.Cluster.label.label("top_cluster")
+            models.Cluster.clean_label.label("top_cluster")
         )
         .join(models.Signal, models.Competitor.id == models.Signal.competitor_id)
         .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
         .filter(models.Competitor.client_id == client_id)
-        .group_by(models.Competitor.name, models.Cluster.label)
+        .filter(models.Cluster.clean_label != "")
+        .group_by(models.Competitor.name, models.Cluster.clean_label)
         .order_by(models.Competitor.name, func.count(models.Cluster.id).desc())
-        .distinct(models.Competitor.name) # Postgres distinct on name picks the first row per group based on order_by
+        .distinct(models.Competitor.name) 
         .all()
     )
     dom_map = {d.name: d.top_cluster for d in dominant_clusters}
@@ -230,15 +233,16 @@ def get_messaging_distribution(client_id: int, db: Session = Depends(get_db), us
     # 2. Aggregate counts per cluster
     results = (
         db.query(
-            models.Cluster.label.label("name"),
+            models.Cluster.clean_label.label("name"),
             func.count(models.Signal.id).label("count")
         )
         .join(models.Signal, models.Cluster.id == models.Signal.cluster_id)
         .join(models.Competitor, models.Signal.competitor_id == models.Competitor.id)
         .filter(models.Competitor.client_id == client_id)
-        .group_by(models.Cluster.label)
+        .filter(models.Cluster.clean_label != "")
+        .group_by(models.Cluster.clean_label)
         .order_by(func.count(models.Signal.id).desc())
-        .limit(5)
+        .limit(6)
         .all()
     )
 
@@ -414,7 +418,8 @@ def get_chart_competitor_scores(client_id: int, db: Session = Depends(get_db), u
                 db.query(func.count(models.Signal.id))
                 .join(models.Cluster, models.Signal.cluster_id == models.Cluster.id)
                 .filter(models.Signal.competitor_id == comp.id)
-                .filter(models.Cluster.label.op("~*")(p_regex))
+                .filter(models.Cluster.clean_label != "")
+                .filter(models.Cluster.clean_label.op("~*")(p_regex))
                 .scalar() or 0
             )
             comp_scores[pillar] = count
@@ -650,7 +655,7 @@ async def simulate_endpoint(websocket: WebSocket):
         for s in real_saturations:
             cid = s["cluster_id"]
             cluster_intel[cid] = {
-                "label": s.get("cluster_label", "Unknown Theme"),
+                "clean_label": s.get("cluster_label", "Unknown Theme"),
                 "saturation": s.get("saturation_score", 0.5),
                 "competitors_using": s.get("competitors_using", 1),
                 "total_competitors": s.get("total_competitors", 3),
@@ -708,7 +713,7 @@ async def simulate_endpoint(websocket: WebSocket):
     rival_3 = competitor_names[2] if len(competitor_names) > 2 else "emerging competitor"
     
     # Pick real cluster labels for contextual text
-    cl_labels = [c.get("label", "market segment")[:60] for c in target_clusters]
+    cl_labels = [c.get("clean_label", "market segment")[:60] for c in target_clusters]
     cl1 = cl_labels[0] if len(cl_labels) > 0 else "primary market segment"
     cl2 = cl_labels[1] if len(cl_labels) > 1 else "secondary market segment"
     cl3 = cl_labels[2] if len(cl_labels) > 2 else "emerging vertical"
