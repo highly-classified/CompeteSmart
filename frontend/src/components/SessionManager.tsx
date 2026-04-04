@@ -14,16 +14,16 @@ export function SessionManager() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     const isAuthPage = pathname === "/auth";
-    const isPublicPage = pathname === "/"; // Add other public routes if needed
+    const isPublicPage = pathname === "/";
 
     if (!token && !isAuthPage && !isPublicPage) {
       console.log("No session found. Redirecting to login...");
-      router.push("/auth");
+      router.replace("/auth");
     }
 
     // If logged in and on auth page, redirect to dashboard
     if (token && isAuthPage) {
-      router.push("/dashboard");
+      router.replace("/dashboard");
     }
   }, [pathname, router]);
 
