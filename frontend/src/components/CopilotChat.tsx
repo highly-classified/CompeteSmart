@@ -80,6 +80,8 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   useEffect(() => {
     if (activeExperiment !== null) {
       localStorage.setItem("copilotActiveExperiment", JSON.stringify(activeExperiment));
+    } else {
+      localStorage.removeItem("copilotActiveExperiment");
     }
   }, [activeExperiment]);
 
@@ -151,6 +153,16 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isOpen, isLoading]);
+
+  const handleChangeExperiment = () => {
+    setActiveExperiment(null);
+
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  };
 
   const handleSend = async (customInput?: string) => {
     const textToSend = customInput || input;
@@ -228,7 +240,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                   </span>
                 </div>
                 <button
-                  onClick={() => setActiveExperiment(null)}
+                  onClick={handleChangeExperiment}
                   className="text-[9px] text-violet-400 font-bold hover:underline ml-2"
                 >
                   Change
