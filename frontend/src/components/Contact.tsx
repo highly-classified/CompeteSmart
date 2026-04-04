@@ -47,7 +47,7 @@ export default function Contact() {
                 </div>
                 <div>
                   <h4 className="text-[10px] uppercase tracking-[0.2em] text-foreground/40 mb-1">Headquarters</h4>
-                  <p className="text-foreground/80 font-medium tracking-wide">San Francisco, CA</p>
+                  <p className="text-foreground/80 font-medium tracking-wide">Chennai, India</p>
                 </div>
               </div>
             </div>
