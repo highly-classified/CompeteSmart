@@ -24,7 +24,7 @@ export default function Hero() {
   // SVG Progress animation after mount
   useEffect(() => {
     const timer = setTimeout(() => {
-      setProgress(75);
+      setProgress(98);
     }, 500);
     return () => clearTimeout(timer);
   }, []);
@@ -32,8 +32,6 @@ export default function Hero() {
   const menuLinks = [
     { title: "Home", href: "#" },
     { title: "About Us", href: "#about-us" },
-    { title: "Projects", href: "#" },
-    { title: "Contact", href: "#" },
   ];
 
   const featureItems = [
@@ -144,12 +142,13 @@ export default function Hero() {
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-foreground text-lg font-medium">75%</span>
+                <span className="text-foreground text-lg font-medium">98.4%</span>
               </div>
             </div>
             <p className="text-foreground/70 text-sm leading-relaxed">
-              Guiding organizations toward lasting competitive advantage
-              through actionable intelligence and data-driven decisions.
+              Engineered to transform raw competitor movements into high-impact
+              growth experiments, our AI Intelligence engine gives your brand
+              the decisive edge in seconds.
             </p>
           </div>
         </div>

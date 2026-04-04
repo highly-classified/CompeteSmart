@@ -25,6 +25,7 @@ import {
 } from "recharts";
 import { Target, TrendingUp, AlertTriangle, Lightbulb, CheckCircle2, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
@@ -254,6 +255,7 @@ const ScatterTooltip = ({ active, payload }: any) => {
 // ─────────────────────────────────────────────
 
 export default function Dashboard() {
+  const router = useRouter();
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedExp, setSelectedExp] = useState<string | null>(null);
 
@@ -479,7 +481,7 @@ export default function Dashboard() {
           <button
             onClick={() => {
               localStorage.removeItem("token");
-              window.location.href = "/";
+              router.push("/");
             }}
             className="inline-flex items-center gap-2 text-zinc-500 hover:text-white text-xs uppercase tracking-[0.2em] font-bold mb-3 transition-all group"
           >
