@@ -1,5 +1,8 @@
 "use client";
 
+// Force Next.js to never cache this page — always render fresh
+export const dynamic = "force-dynamic";
+
 import React, { useState } from "react";
 import {
   LineChart,
@@ -27,6 +30,7 @@ import { motion } from "framer-motion";
 import { CopilotChat } from "@/components/CopilotChat";
 import { useEffect } from "react";
 
+
 // ─────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────
@@ -39,14 +43,50 @@ type ThemeGroupEntry = { competitor: string; category: string; percentage: numbe
 type StrengthGroupEntry = { competitor: string; segments: { label: string; value: number }[] };
 
 interface Experiment {
+  title?: string;
+  category?: string;
   insight: string;
   cluster_id: string;
+  cluster_name?: string;
   trend: string;
   confidence: number;
+  confidence_label?: string;
+  confidence_score?: number;
   risk: number;
+  risk_label?: string;
   recommended_action: string;
+  experiment?: string;
+  hypothesis?: string;
+  metric?: string;
+  expected_impact?: string;
   evidence: string[];
+  traceability?: {
+    summary?: string;
+    total_signals?: number;
+    sample_signals?: string[];
+    competitor_ids?: string[];
+    reasons?: string[];
+  };
 }
+
+const getConfidenceLabel = (exp: Experiment) => {
+  const explicitLabel = exp.confidence_label?.trim();
+  if (explicitLabel && explicitLabel !== "0%") {
+    return explicitLabel;
+  }
+
+  const numericConfidence = [exp.confidence_score, exp.confidence]
+    .find((value) => Number.isFinite(value) && Number(value) > 0);
+
+  if (numericConfidence !== undefined) {
+    const pct = Math.round(Math.max(0.6, Math.min(Number(numericConfidence), 0.95)) * 100);
+    return `${pct}%`;
+  }
+
+  const riskFallback = Number.isFinite(exp.risk) ? Number(exp.risk) : 0.5;
+  const pct = Math.round(Math.max(0.6, Math.min(1 - riskFallback, 0.95)) * 100);
+  return `${pct}%`;
+};
 
 // ─────────────────────────────────────────────
 // Config
@@ -238,13 +278,29 @@ export default function Dashboard() {
       .catch(e => console.error("Summary fetch error", e));
 
     fetch("/api/experiments")
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setExperiments(data);
-        } else {
-          setExperiments([]);
+      .then(async (res) => {
+        const rawText = await res.text();
+        let payload: any;
+        try {
+          payload = rawText ? JSON.parse(rawText) : [];
+        } catch {
+          throw new Error(rawText || "API returned non-JSON response");
         }
+
+        if (!res.ok) {
+          throw new Error(payload?.error || "Experiments API error");
+        }
+
+        return payload;
+      })
+      .then(data => {
+        const experimentList = Array.isArray(data) ? data : Array.isArray(data?.experiments) ? data.experiments : [];
+        console.log("Suggested experiment payload", experimentList);
+
+        if (experimentList.length === 0) {
+            console.warn("No structured experiments were returned by /api/experiments");
+        }
+        setExperiments(experimentList.slice(0, 3));
       })
       .catch(e => console.error("Experiments fetch error", e));
   }, []);
@@ -432,7 +488,7 @@ export default function Dashboard() {
           <h1 className="text-4xl font-bungee tracking-wider text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">
             Market Intelligence
           </h1>
-          <p className="text-zinc-500 text-sm mt-2 max-w-md leading-relaxed">
+          <p className="text-zinc-400 text-sm mt-2 max-w-md leading-relaxed">
             Live competitive insights and strategic recommendations with AI-driven analysis.
           </p>
         </div>
@@ -447,12 +503,7 @@ export default function Dashboard() {
               <option key={competitor} value={competitor}>{competitor}</option>
             ))}
           </select>
-          <Link
-            href="/experiment-builder"
-            className="hidden md:flex px-4 py-2 bg-violet-500/10 border border-violet-500/20 rounded-full text-[10px] font-bold tracking-widest uppercase text-violet-400 hover:bg-violet-500/20 transition-colors items-center gap-2"
-          >
-            Experiment Builder →
-          </Link>
+          
           <div className="hidden md:block">
             <div className="px-4 py-2 bg-zinc-900 border border-white/5 rounded-full text-[10px] font-bold tracking-widest uppercase text-emerald-400 flex items-center gap-2">
               <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
@@ -500,7 +551,7 @@ export default function Dashboard() {
 
         {/* ── ANALYSIS CHARTS ── */}
         <div>
-          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+          <h2 className="text-[20px] uppercase tracking-[0.3em] text-zinc-300 font-black mb-6 flex items-center gap-3">
             Market Analysis <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -632,7 +683,7 @@ export default function Dashboard() {
 
         {/* ── ACTION & STRATEGY ── */}
         <div>
-          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+          <h2 className="text-[20px] uppercase tracking-[0.3em] text-zinc-300 font-black mb-6 flex items-center gap-3">
             Action &amp; Strategy <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-8">
@@ -726,62 +777,115 @@ export default function Dashboard() {
 
         {/* ── SUGGESTED EXPERIMENTS ── */}
         <div>
-          <h2 className="text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-black mb-6 flex items-center gap-3">
+          <h2 className="text-[20px] uppercase tracking-[0.3em] text-zinc-300 font-black mb-6 flex items-center gap-3">
             Suggested Experiments <div className="h-[1px] flex-1 bg-white/5" />
           </h2>
+          {experiments.length === 0 ? (
+            <div className="pb-20">
+              <div className="rounded-[2rem] border border-white/10 bg-zinc-950 px-8 py-10">
+                <p className="text-white text-lg font-semibold mb-2">No structured experiments are available right now.</p>
+                <p className="text-gray-300 text-sm leading-relaxed">
+                  This usually means the backend returned an empty experiment list, the structured experiment cache has not been regenerated yet,
+                  or the API is still serving stale data from before the new pipeline was connected.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-20">
-            {experiments.map((exp, index) => {
-              const isActive = selectedExp === exp.recommended_action;
-              const riskLabel = exp.risk < 0.35 ? "Low Risk" : exp.risk < 0.65 ? "Medium Risk" : "High Risk";
-              const glowColor = exp.risk < 0.35 ? "bg-emerald-500/5" : exp.risk < 0.65 ? "bg-amber-500/5" : "bg-red-500/5";
-              const riskBadge = exp.risk < 0.35
+            {experiments.slice(0, 3).map((exp, index) => {
+              const activeExperiment = exp.experiment || exp.recommended_action;
+              const isActive = selectedExp === activeExperiment;
+              const riskScore = Number.isFinite(exp.risk) ? exp.risk : 0.5;
+              const rawRiskLabel = exp.risk_label || (riskScore < 0.35 ? "Low Risk" : riskScore < 0.65 ? "Medium Risk" : "High Risk");
+              const riskLabel = rawRiskLabel.toLowerCase().includes("risk") ? rawRiskLabel : `${rawRiskLabel} Risk`;
+              const glowColor = riskScore < 0.35 ? "bg-emerald-500/10" : riskScore < 0.65 ? "bg-amber-500/10" : "bg-red-500/10";
+              const riskBadge = riskScore < 0.35
                 ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
-                : exp.risk < 0.65
+                : riskScore < 0.65
                   ? "bg-amber-500/10 text-amber-300 border-amber-500/20"
                   : "bg-red-500/10 text-red-300 border-red-500/20";
-              const linkColor = exp.risk < 0.35 ? "text-emerald-400" : exp.risk < 0.65 ? "text-amber-400" : "text-red-400";
+              const linkColor = riskScore < 0.35 ? "text-emerald-400" : riskScore < 0.65 ? "text-amber-400" : "text-red-400";
+              const confidenceLabel = getConfidenceLabel(exp);
+              const traceabilityItems = exp.traceability?.reasons?.slice(0, 3) || [];
               return (
                 <div
                   key={exp.cluster_id}
-                  onClick={() => setSelectedExp(exp.recommended_action)}
-                  className={`bg-zinc-900/40 backdrop-blur-sm border p-8 rounded-[2.5rem] shadow-2xl hover:bg-zinc-900/60 transition-all group overflow-hidden relative cursor-pointer ${isActive ? "border-violet-500/40 ring-1 ring-violet-500/20" : "border-white/5"}`}
+                  onClick={() => setSelectedExp(activeExperiment)}
+                  className={`bg-zinc-950 border p-8 rounded-[2.5rem] shadow-2xl hover:scale-[1.015] hover:shadow-[0_20px_50px_rgba(0,0,0,0.45)] transition-all duration-300 group overflow-hidden relative cursor-pointer ${isActive ? "border-violet-500/40 ring-1 ring-violet-500/20" : "border-white/10"}`}
                 >
-                  <div className={`absolute top-0 right-0 w-32 h-32 ${glowColor} blur-3xl rounded-full`} />
+                  <div className={`absolute top-0 right-0 w-36 h-36 ${glowColor} blur-3xl rounded-full`} />
                   {isActive && (
                     <div className="absolute top-4 right-4">
                       <CheckCircle2 className="w-5 h-5 text-violet-400" />
                     </div>
                   )}
-                  <div className="flex items-center gap-2 mb-4 flex-wrap">
-                    <span className={`${riskBadge} text-[10px] px-3 py-1 rounded-lg border font-bold uppercase tracking-widest`}>{riskLabel}</span>
-                    <span className="bg-violet-500/10 text-violet-300 text-[10px] px-3 py-1 rounded-lg border border-violet-500/20 font-bold uppercase tracking-widest">
-                      Confidence: {(exp.confidence * 100).toFixed(0)}%
-                    </span>
+                  <div className="flex items-start justify-between gap-4 mb-6">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-gray-400 mb-2">Category</p>
+                      <h3 className="text-white text-xl font-semibold drop-shadow-[0_0_18px_rgba(255,255,255,0.08)]">
+                        {exp.category || exp.title || exp.cluster_name || exp.cluster_id}
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      <span className={`${riskBadge} text-[10px] px-3 py-1 rounded-full border font-bold uppercase tracking-widest`}>{riskLabel}</span>
+                      <span className="bg-violet-500/10 text-violet-200 text-[10px] px-3 py-1 rounded-full border border-violet-500/25 font-bold uppercase tracking-widest">
+                        Confidence: {confidenceLabel}
+                      </span>
+                    </div>
                   </div>
-                  <h3 className="font-bold text-lg text-white mb-2">{exp.cluster_id}</h3>
-                  <p className="text-zinc-500 text-xs leading-relaxed mb-6">{exp.recommended_action}</p>
 
-                  <div className="mb-6 p-4 bg-white/5 rounded-2xl border border-white/10 group-hover:bg-white/10 transition-colors">
-                    <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
-                      <span className={`w-1 h-1 rounded-full ${exp.risk < 0.35 ? "bg-emerald-500" : exp.risk < 0.65 ? "bg-amber-500" : "bg-red-500"}`} /> Traceability
+                  <div className="mb-6">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-gray-400 mb-3">Experiment</p>
+                    <p className="text-gray-200 text-md font-small leading-snug mb-3">
+                      {exp.experiment}
                     </p>
-                    <p className="text-[11px] text-zinc-300 leading-relaxed italic">
-                      {exp.insight}
+                    <p className="text-gray-300 text-sm leading-relaxed">
+                      {exp.hypothesis}
                     </p>
+                  </div>
+
+                  <div className="mb-6 flex items-end justify-between gap-4">
+                    <div>
+                      <p className="text-green-400 text-2xl font-semibold leading-none">{exp.expected_impact}</p>
+                      <p className="text-gray-400 text-[11px] uppercase tracking-[0.18em] mt-2">Expected Impact</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-gray-100 text-sm font-semibold">{exp.metric}</p>
+                      <p className="text-gray-400 text-[11px] uppercase tracking-[0.18em] mt-2">Primary KPI</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-6 p-4 bg-white/[0.03] rounded-2xl border border-white/10 group-hover:bg-white/[0.05] transition-colors">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-gray-400 mb-3 flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${riskScore < 0.35 ? "bg-emerald-500" : riskScore < 0.65 ? "bg-amber-500" : "bg-red-500"}`} />
+                      Traceability
+                    </p>
+                    <div className="space-y-2">
+                      {traceabilityItems.length > 0 ? traceabilityItems.map((reason, reasonIndex) => (
+                        <div key={`${exp.cluster_id}-reason-${reasonIndex}`} className="flex items-start gap-2">
+                          <span className="text-gray-300 text-xs leading-5">&bull;</span>
+                          <p className="text-gray-300 text-sm leading-relaxed">{reason}</p>
+                        </div>
+                      )) : (
+                        <p className="text-gray-300 text-sm leading-relaxed">{exp.traceability?.summary}</p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2 mb-6">
-                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Intelligence Layer</span>
-                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Decision Layer</span>
-                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/5 text-zinc-400 font-medium">Trust Layer</span>
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/[0.05] text-gray-400 font-medium">Intelligence Layer</span>
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/[0.05] text-gray-400 font-medium">Decision Layer</span>
+                    <span className="text-[9px] px-2 py-1 rounded-md bg-white/[0.05] text-gray-400 font-medium">Trust Layer</span>
                   </div>
-                  <Link href="/experiment-builder" className={`inline-flex items-center gap-2 ${linkColor} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
+                  <Link href={`/experiment-builder?cluster_id=${exp.cluster_id}`} className={`inline-flex items-center gap-2 ${linkColor} text-xs font-bold uppercase tracking-widest hover:gap-3 transition-all`}>
                     Launch Experiment <span className="text-lg">→</span>
                   </Link>
+
                 </div>
               );
             })}
           </div>
+          )}
         </div>
 
       </div>

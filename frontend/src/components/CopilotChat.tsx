@@ -11,13 +11,29 @@ interface Message {
 }
 
 interface Experiment {
+  title?: string;
+  category?: string;
   insight: string;
   cluster_id: string;
+  cluster_name?: string;
   trend: string;
   confidence: number;
+  confidence_label?: string;
   risk: number;
+  risk_label?: string;
   recommended_action: string;
+  experiment?: string;
+  hypothesis?: string;
+  metric?: string;
+  expected_impact?: string;
   evidence: string[];
+  traceability?: {
+    summary?: string;
+    total_signals?: number;
+    sample_signals?: string[];
+    competitor_ids?: string[];
+    reasons?: string[];
+  };
 }
 
 interface CopilotChatProps {
@@ -64,6 +80,8 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   useEffect(() => {
     if (activeExperiment !== null) {
       localStorage.setItem("copilotActiveExperiment", JSON.stringify(activeExperiment));
+    } else {
+      localStorage.removeItem("copilotActiveExperiment");
     }
   }, [activeExperiment]);
 
@@ -93,9 +111,9 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
   // Handle choice from dashboard
   useEffect(() => {
     if (dashboardSelected) {
-      const exp = experiments.find(e => e.recommended_action === dashboardSelected);
+      const exp = experiments.find(e => (e.experiment || e.recommended_action) === dashboardSelected);
       if (exp) {
-        setActiveExperiment({ title: exp.recommended_action, cluster_id: exp.cluster_id });
+        setActiveExperiment({ title: exp.experiment || exp.recommended_action, cluster_id: exp.cluster_id });
       }
     }
   }, [dashboardSelected]);
@@ -135,6 +153,16 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isOpen, isLoading]);
+
+  const handleChangeExperiment = () => {
+    setActiveExperiment(null);
+
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  };
 
   const handleSend = async (customInput?: string) => {
     const textToSend = customInput || input;
@@ -212,7 +240,7 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                   </span>
                 </div>
                 <button
-                  onClick={() => setActiveExperiment(null)}
+                  onClick={handleChangeExperiment}
                   className="text-[9px] text-violet-400 font-bold hover:underline ml-2"
                 >
                   Change
@@ -260,12 +288,12 @@ export function CopilotChat({ selectedExperiment: dashboardSelected, experiments
                           {experiments.slice(0, 3).map((exp, idx) => (
                             <button
                               key={idx}
-                              onClick={() => selectAndPlan(exp.recommended_action, exp.cluster_id)}
+                              onClick={() => selectAndPlan(exp.experiment || exp.recommended_action, exp.cluster_id)}
                               className="w-full text-left p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all group flex items-center justify-between"
                             >
                               <div className="flex flex-col gap-1 overflow-hidden">
                                 <span className="text-[10px] text-violet-400 font-bold uppercase tracking-wider">Experiment {idx + 1}</span>
-                                <span className="text-xs text-zinc-300 truncate">{exp.recommended_action}</span>
+                                <span className="text-xs text-zinc-300 truncate">{exp.title || exp.cluster_name || exp.experiment || exp.recommended_action}</span>
                               </div>
                               <ChevronRight className="w-4 h-4 text-zinc-600 group-hover:text-white transition-colors flex-shrink-0" />
                             </button>

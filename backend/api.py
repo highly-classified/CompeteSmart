@@ -1,7 +1,10 @@
 from fastapi import FastAPI, Depends, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text, func, case
+from datetime import datetime
 from src.database import get_db, engine, SessionLocal
 from src import models
 from src.intelligence.clustering import ClusteringEngine
@@ -9,7 +12,7 @@ from src.intelligence.temporal import TemporalEngine
 from src.intelligence.advanced import AdvancedIntelligenceEngine
 from src.intelligence.schemas import SignalInput, TrendResult, SaturationResult, WhitespaceResult, DriftResult
 from src.auth import get_current_user
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -24,12 +27,21 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-from src.cache_manager import refresh_dashboard_cache, compute_summary_insights, compute_competitor_analysis
+from src.cache_manager import (
+    refresh_dashboard_cache,
+    compute_summary_insights,
+    compute_competitor_analysis,
+    compute_suggested_experiments,
+)
 from src.execution_copilot import chat_with_experiment
-from src.ml_model import MarketStrategyRanker
+# Correctly import the shared ranker logic
+from src.ml_decision_layer import get_shared_ranker, generate_ranked_experiment_candidates, _build_ml_features
+from src.experiment_generator import generate_experiment_output
+import math
 
-# Initialize Strategy Ranker
-strategy_ranker = MarketStrategyRanker()
+# Use the shared ranker singleton
+strategy_ranker = get_shared_ranker()
+
 
 
 # Dynamic Theme Mapping Layer (Requested)
@@ -58,6 +70,202 @@ logger = logging.getLogger("api")
 
 app = FastAPI(title="CompeteSmart Intelligence API")
 
+
+def _is_valid_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _parse_percentage_label(value: Any) -> Optional[float]:
+    if not isinstance(value, str) or not value.endswith("%"):
+        return None
+    try:
+        return max(0.0, min(float(value[:-1].strip()) / 100.0, 1.0))
+    except ValueError:
+        return None
+
+
+def _clamp_score(value: Any, fallback: float = 0.0) -> float:
+    if _is_valid_number(value):
+        return max(0.0, min(float(value), 1.0))
+    return fallback
+
+
+def _looks_like_cluster_id(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith("CL_")
+
+
+def _risk_label_from_score(value: float) -> str:
+    if value < 0.35:
+        return "Low Risk"
+    if value < 0.65:
+        return "Medium Risk"
+    return "High Risk"
+
+
+def _title_from_experiment_text(text: Optional[str]) -> Optional[str]:
+    if not text or not isinstance(text, str):
+        return None
+
+    cleaned = text.strip().strip(".")
+    if not cleaned:
+        return None
+
+    prefixes = ("Test ", "Develop ", "Launch ", "Implement ", "Create ", "Optimize ")
+    for prefix in prefixes:
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
+
+    cleaned = cleaned.split(" to ", 1)[0]
+    cleaned = cleaned.split(" with ", 1)[0]
+    cleaned = cleaned.split(" for ", 1)[0]
+    cleaned = cleaned.split(" within ", 1)[0]
+    cleaned = cleaned.split(" in ", 1)[0]
+    cleaned = cleaned.strip(" '\"")
+
+    return cleaned[:80] if cleaned else None
+
+
+def _build_traceability(item: Dict[str, Any]) -> Dict[str, Any]:
+    trust = item.get("trust_and_risk") or {}
+    item_traceability = item.get("traceability")
+    raw_traceability = item_traceability if item_traceability else (trust.get("traceability") or {})
+    traceability_reasons = raw_traceability if isinstance(raw_traceability, list) else raw_traceability.get("reasons", [])
+    trust_traceability = trust.get("traceability") or {}
+    traceability = {} if isinstance(raw_traceability, list) else raw_traceability
+    sample_signals = [
+        signal.strip()
+        for signal in ((trust_traceability.get("sample_signals") or traceability.get("sample_signals")) or item.get("evidence") or [])
+        if isinstance(signal, str) and signal.strip()
+    ]
+    competitor_ids = [
+        str(competitor_id)
+        for competitor_id in ((trust_traceability.get("competitor_ids") or traceability.get("competitor_ids")) or [])
+        if competitor_id is not None
+    ]
+    competitor_names = [
+        str(name)
+        for name in ((trust_traceability.get("competitor_names") or traceability.get("competitor_names")) or [])
+        if name
+    ]
+    total_signals = trust_traceability.get("total_signals", traceability.get("total_signals"))
+    total_signals = int(total_signals) if isinstance(total_signals, int) else len(sample_signals)
+    avg_rating = trust_traceability.get("avg_rating", traceability.get("avg_rating"))
+    review_signal_count = trust_traceability.get("review_signal_count", traceability.get("review_signal_count"))
+    review_score = trust_traceability.get("review_score", traceability.get("review_score"))
+
+    summary_parts: List[str] = []
+    if traceability_reasons:
+        summary_parts.append(traceability_reasons[0])
+    if sample_signals:
+        summary_parts.append(sample_signals[0])
+    if _is_valid_number(avg_rating):
+        summary_parts.append(f"avg rating: {float(avg_rating):.1f}/5")
+    elif _is_valid_number(review_score):
+        summary_parts.append(f"review score: {round(float(review_score) * 100):.0f}%")
+    if isinstance(review_signal_count, int) and review_signal_count > 0:
+        summary_parts.append(f"{review_signal_count} review signal{'s' if review_signal_count != 1 else ''}")
+    if total_signals:
+        summary_parts.append(f"{total_signals} supporting signal{'s' if total_signals != 1 else ''}")
+    if competitor_names:
+        summary_parts.append(f"sources: {', '.join(competitor_names[:2])}")
+    if competitor_ids:
+        summary_parts.append(f"competitors: {', '.join(competitor_ids[:3])}")
+
+    summary = " | ".join(summary_parts) if summary_parts else (
+        item.get("insight")
+        or trust.get("explanation")
+        or "No traceability details were returned by the backend."
+    )
+
+    return {
+        "summary": summary,
+        "total_signals": total_signals,
+        "sample_signals": sample_signals[:3],
+        "competitor_ids": competitor_ids[:5],
+        "competitor_names": competitor_names[:5],
+        "avg_rating": avg_rating,
+        "review_signal_count": review_signal_count,
+        "review_score": review_score,
+        "reasons": traceability_reasons[:3],
+    }
+
+
+def _normalize_experiment(item: Dict[str, Any]) -> Dict[str, Any]:
+    decision = item.get("decision") or {}
+    trust = item.get("trust_and_risk") or {}
+    recommended_action = (
+        item.get("experiment")
+        or item.get("recommended_action")
+        or decision.get("experiment")
+        or ""
+    )
+    cluster_name = item.get("cluster_name") or item.get("category")
+    raw_title = item.get("title") or cluster_name or item.get("cluster_id")
+    title = raw_title
+    if _looks_like_cluster_id(title):
+        title = _title_from_experiment_text(recommended_action) or cluster_name or title
+
+    confidence = item.get("confidence_score")
+    if not _is_valid_number(confidence):
+        confidence = _parse_percentage_label(item.get("confidence"))
+    if not _is_valid_number(confidence):
+        confidence = item.get("ml_predicted_score")
+    if not _is_valid_number(confidence):
+        confidence = trust.get("confidence_score")
+    if not _is_valid_number(confidence):
+        confidence = item.get("confidence")
+    if not _is_valid_number(confidence):
+        confidence = decision.get("priority_score")
+    confidence = _clamp_score(confidence, fallback=0.0)
+
+    risk = item.get("risk_score")
+    if not _is_valid_number(risk):
+        risk = trust.get("risk_score")
+    if not _is_valid_number(risk):
+        risk = item.get("risk")
+    risk = _clamp_score(risk, fallback=0.0)
+
+    traceability = _build_traceability(item)
+
+    return {
+        "title": title or "Suggested Experiment",
+        "category": item.get("category") or cluster_name or title or "General Service",
+        "cluster_id": item.get("cluster_id"),
+        "cluster_name": cluster_name,
+        "trend": item.get("trend") or decision.get("priority") or item.get("decision_type") or "",
+        "confidence": confidence,
+        "confidence_label": item.get("confidence") if isinstance(item.get("confidence"), str) else f"{round(confidence * 100):.0f}%",
+        "risk": risk,
+        "risk_label": item.get("risk") if isinstance(item.get("risk"), str) else _risk_label_from_score(risk),
+        "recommended_action": recommended_action,
+        "experiment": item.get("experiment") or recommended_action,
+        "hypothesis": item.get("hypothesis"),
+        "metric": item.get("metric"),
+        "expected_impact": item.get("expected_impact"),
+        "insight": item.get("insight") or item.get("hypothesis") or trust.get("explanation") or traceability["summary"],
+        "traceability": traceability,
+        "evidence": item.get("evidence") or traceability["sample_signals"],
+    }
+
+
+def _normalize_experiments(items: Any) -> List[Dict[str, Any]]:
+    if not isinstance(items, list):
+        return []
+    normalized = [_normalize_experiment(item) for item in items if isinstance(item, dict)]
+    return normalized[:3]
+
+
+def _is_structured_experiment_payload(items: Any) -> bool:
+    if not isinstance(items, list) or not items:
+        return False
+
+    sample = items[0]
+    if not isinstance(sample, dict):
+        return False
+
+    return all(field in sample for field in ("experiment", "hypothesis", "expected_impact", "traceability"))
+
 @app.on_event("startup")
 def startup_db():
     logger.info("Initializing database...")
@@ -85,8 +293,8 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"http://localhost:\d+",
+    allow_origins=origins + ["http://127.0.0.1:3000", "http://127.0.0.1:3001"],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -510,43 +718,67 @@ def get_chart_risk_saturation(client_id: int, db: Session = Depends(get_db), use
 @app.get("/api/experiments")
 def get_suggested_experiments(db: Session = Depends(get_db)):
     """Returns the latest experiment recommendations from the database cache (with JSON fallback)."""
-    # 1. Try Dataset Cache (Database)
-    cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
-    if cache_entry and cache_entry.data:
-        return cache_entry.data
+    try:
+        # 1. Try Dataset Cache (Database)
+        cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
+        if cache_entry and cache_entry.data:
+            if _is_structured_experiment_payload(cache_entry.data):
+                response = _normalize_experiments(cache_entry.data)
+                print("API Response (cache):", response)
+                return JSONResponse(content=jsonable_encoder(response))
+
+            print("Stale suggested_experiments cache detected. Regenerating structured experiments...")
+
+        # 2. Force regeneration from the new ML -> decision -> experiment pipeline
+        regenerated = compute_suggested_experiments(db)
+        print("Final Experiments:", regenerated)
+        if regenerated:
+            cache_entry = db.query(models.DashboardCache).filter(models.DashboardCache.key == "suggested_experiments").first()
+            if cache_entry:
+                cache_entry.data = regenerated
+                cache_entry.last_updated = datetime.utcnow()
+            else:
+                db.add(models.DashboardCache(key="suggested_experiments", data=regenerated))
+            db.commit()
+            response = _normalize_experiments(regenerated)
+            print("API Response (regenerated):", response)
+            return JSONResponse(content=jsonable_encoder(response))
+    except Exception as e:
+        logger.error(f"Failed to regenerate suggested experiments: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e), "experiments": []},
+        )
         
-    # 2. Primary Fallback: ML Standalone Results
+    # 3. Primary Fallback: ML Standalone Results
     ml_output_path = "ml_standalone_results.json"
     if os.path.exists(ml_output_path):
         try:
             with open(ml_output_path, "r") as f:
-                # Map ML standalone results to the expected schema
                 data = json.load(f)
-                formatted = []
-                for item in data:
-                    formatted.append({
-                        "insight": f"ML Model Confidence: {item['ml_predicted_score']:.2f}",
-                        "cluster_id": item['cluster_name'],
-                        "trend": "High Priority",
-                        "confidence": item['ml_predicted_score'],
-                        "risk": 0.3,
-                        "recommended_action": item['recommended_action'],
-                        "evidence": []
-                    })
-                return formatted
+                if _is_structured_experiment_payload(data):
+                    response = _normalize_experiments(data)
+                    print("API Response (ml fallback):", response)
+                    return JSONResponse(content=jsonable_encoder(response))
+                print("Skipping ml_standalone_results.json because it is not using the structured experiment schema.")
         except Exception as e:
             logger.error(f"Error reading ML standalone file: {e}")
 
-    # 3. Secondary Fallback: Original JSON (Backup)
+    # 4. Secondary Fallback: Original JSON (Backup)
     output_path = "decision_layer_output.json"
     if os.path.exists(output_path):
         try:
             with open(output_path, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if _is_structured_experiment_payload(data):
+                    response = _normalize_experiments(data)
+                    print("API Response (legacy fallback):", response)
+                    return JSONResponse(content=jsonable_encoder(response))
+                print("Skipping decision_layer_output.json because it is using the legacy experiment schema.")
         except Exception as e:
             logger.error(f"Error reading legacy output file: {e}")
     
-    return []
+    return JSONResponse(content={"experiments": [], "message": "No structured experiments are available."})
 
 
 @app.post("/api/copilot/chat", response_model=CopilotChatResponse)
@@ -701,276 +933,458 @@ def get_competitor_suggestions(
 
 
 @app.websocket("/ws/simulate")
-async def simulate_endpoint(websocket: WebSocket):
+async def simulate_endpoint(websocket: WebSocket, cluster_focus: str = None):
     await websocket.accept()
-    
-    # ── 1. LOAD REAL DATA FROM DATABASE ──
+    logger.info(f"Simulation engine accepted connection (Focus: {cluster_focus}). Initializing analysis...")
+
+
+    # ── 1. LOAD REAL DATA FROM DATABASE ─────────────────────────────────────────
     db = SessionLocal()
     try:
-        # Fetch all competitors
         competitors = db.query(models.Competitor).all()
         competitor_names = [c.name for c in competitors] if competitors else ["Unknown Competitor"]
-        
-        # Fetch clusters with their real saturation and trend data
+
         temp_engine = TemporalEngine(db)
-        real_saturations = temp_engine.calculate_saturation()
+        # 1. Fetch only the clusters that actually have signal data (market evidence)
+        # Instead of 474, we only focus on the top 12 highest-activity segments.
+        all_sats = temp_engine.calculate_saturation()
+        active_saturations = [s for s in all_sats if s.get("competitors_using", 0) > 0]
+        
+        # If we have a focus cluster, prioritize it!
+        focused_sat = next((s for s in all_sats if s.get("cluster_id") == cluster_focus), None)
+        
+        active_saturations.sort(key=lambda x: x.get("competitors_using", 0), reverse=True)
+        top_saturations = active_saturations[:12]
+        
+        if focused_sat and focused_sat not in top_saturations:
+            top_saturations.insert(0, focused_sat)
+            top_saturations = top_saturations[:12]
+
+        
+        # 2. Get trends only for these active clusters
         real_trends = temp_engine.calculate_trends()
-        
-        # Build cluster intelligence map
-        cluster_intel = {}
-        for s in real_saturations:
+        trends_map = {t["cluster_id"]: t for t in real_trends}
+
+        cluster_intel: dict = {}
+        for s in top_saturations:
             cid = s["cluster_id"]
+            t_data = trends_map.get(cid, {})
             cluster_intel[cid] = {
-                "clean_label": s.get("cluster_label", "Unknown Theme"),
-                "saturation": s.get("saturation_score", 0.5),
-                "competitors_using": s.get("competitors_using", 1),
-                "total_competitors": s.get("total_competitors", 3),
+                "clean_label":         s.get("cluster_label", "Unknown Theme"),
+                "saturation":          s.get("saturation_score", 0.5),
+                "competitors_using":   s.get("competitors_using", 1),
+                "total_competitors":   s.get("total_competitors", 3),
+                "growth_rate":         t_data.get("growth_rate", 0.0),
+                "signal_count":        t_data.get("current_count", 0),
             }
-        for t in real_trends:
-            cid = t["cluster_id"]
-            if cid in cluster_intel:
-                cluster_intel[cid]["growth_rate"] = t.get("growth_rate", 0.0)
-                cluster_intel[cid]["trend"] = t.get("trend", "stable")
-                cluster_intel[cid]["signal_count"] = t.get("current_count", 0)
-        
-        # Pick the top clusters by saturation (most interesting for simulation)
-        sorted_clusters = sorted(cluster_intel.values(), key=lambda x: x.get("saturation", 0), reverse=True)
-        target_clusters = sorted_clusters[:8] if len(sorted_clusters) >= 8 else sorted_clusters
-        
-        # Load decision layer experiments (if available)
-        decision_experiments = []
-        try:
-            with open("decision_layer_output.json", "r") as f:
-                decision_experiments = json.load(f)
-        except Exception:
-            pass
-        
-        # ── 2. COMPUTE INITIAL CONDITIONS FROM REAL DATA ──
-        if target_clusters:
-            avg_saturation = sum(c.get("saturation", 0.5) for c in target_clusters) / len(target_clusters)
-            avg_growth = sum(c.get("growth_rate", 0.0) for c in target_clusters) / len(target_clusters)
+
+        if cluster_intel:
+            avg_saturation = sum(v["saturation"] for v in cluster_intel.values()) / len(cluster_intel)
         else:
-            avg_saturation = 0.5
-            avg_growth = 0.0
-        
-        # Starting saturation is derived from REAL average saturation (scaled to 0-100)
-        sat = round(min(95, max(40, avg_saturation * 100)), 1)
-        # Starting differentiation is inversely related to saturation
-        diff = round(min(40, max(5, (1.0 - avg_saturation) * 50)), 1)
-        
-    except Exception as e:
-        logger.error(f"Failed to load real data for simulation: {e}")
+            avg_saturation = 0.55
+
+
+    except Exception as exc:
+        logger.error(f"DB load failed for simulation: {exc}")
         competitor_names = ["Competitor A", "Competitor B"]
-        target_clusters = []
-        decision_experiments = []
-        sat = 75.0
-        diff = 20.0
+        cluster_intel    = {}
+        avg_saturation   = 0.55
     finally:
         db.close()
-    
-    # ── 3. BUILD DATA-DRIVEN STRATEGIES ──
-    max_iterations = 8
+
+    rival_names = competitor_names[:3] or ["Market Leader", "Challenger", "Newcomer"]
+
+    # ── 2. DERIVE INITIAL KPI STATE PURELY FROM REAL DATA ───────────────────────
+    # sat: real avg saturation scaled to 0-100; clamped 30-92
+    sat  = round(min(92.0, max(30.0, avg_saturation * 100.0)), 1)
+    # diff: starts inversely to saturation, clamped 5-45
+    diff = round(min(45.0, max(5.0, (1.0 - avg_saturation) * 55.0)), 1)
     momentum = 0.0
-    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    
-    # Dynamically build strategies using real cluster & competitor names
-    rival_1 = competitor_names[0] if len(competitor_names) > 0 else "leading competitor"
-    rival_2 = competitor_names[1] if len(competitor_names) > 1 else "secondary competitor"
-    rival_3 = competitor_names[2] if len(competitor_names) > 2 else "emerging competitor"
-    
-    # Pick real cluster labels for contextual text
-    cl_labels = [c.get("clean_label", "market segment")[:60] for c in target_clusters]
-    cl1 = cl_labels[0] if len(cl_labels) > 0 else "primary market segment"
-    cl2 = cl_labels[1] if len(cl_labels) > 1 else "secondary market segment"
-    cl3 = cl_labels[2] if len(cl_labels) > 2 else "emerging vertical"
-    
-    # Risk is derived from how many competitors are in that cluster
-    def cluster_risk(idx):
-        if idx < len(target_clusters):
-            c = target_clusters[idx]
-            using = c.get("competitors_using", 1)
-            total = c.get("total_competitors", 3)
-            return min(0.65, max(0.30, using / max(total, 1)))
-        return 0.45
 
-    strategies = [
-        {"name": f"Premium Positioning vs {rival_1}", "diff_boost": (18, 35), "sat_reduce": (8, 18), "risk": cluster_risk(0),
-         "success_text": f"Premium feature rollout resonated in '{cl1}'. {rival_1} cannot replicate the proprietary tech stack within this cycle. High-value segments shifting.",
-         "fail_text": f"Premium positioning in '{cl1}' backfired — {rival_1}'s brand loyalty proved too strong. Target audience perceives insufficient value delta."},
-        {"name": f"Aggressive Undercut in '{cl2[:30]}'", "diff_boost": (10, 22), "sat_reduce": (12, 25), "risk": cluster_risk(1),
-         "success_text": f"Price disruption in '{cl2}' forced {rival_2} into margin pressure. Budget-conscious users are migrating at scale.",
-         "fail_text": f"Price war triggered in '{cl2}' — {rival_2} matched pricing within 48 hours. Saturation intensified across all segments."},
-        {"name": f"Whitespace Niche: '{cl3[:30]}'", "diff_boost": (20, 40), "sat_reduce": (5, 15), "risk": cluster_risk(2),
-         "success_text": f"Captured underserved micro-segment '{cl3}'. Zero direct competition detected. First-mover advantage established.",
-         "fail_text": f"The niche '{cl3}' proved too narrow for sustainable growth. Customer acquisition cost exceeds lifetime value."},
-        {"name": "AI-Driven Personalization Engine", "diff_boost": (15, 30), "sat_reduce": (10, 20), "risk": 0.40,
-         "success_text": f"AI personalization deployed across user base. Engagement up 340%. {rival_1} and {rival_2} lack data infrastructure to replicate.",
-         "fail_text": f"Personalization model underfitting — users report irrelevant recommendations. {rival_1} already has a stronger data moat."},
-        {"name": f"Community-Led Growth vs {rival_2}", "diff_boost": (12, 25), "sat_reduce": (8, 16), "risk": 0.48,
-         "success_text": f"Organic community flywheel activated. User-generated content now drives 60% of new acquisition. Defensible moat established against {rival_2}.",
-         "fail_text": f"Community engagement stalled. Users prefer {rival_2}'s established ecosystem. Network effects working against us."},
-        {"name": f"Strategic Partnership Play", "diff_boost": (15, 28), "sat_reduce": (10, 22), "risk": 0.42,
-         "success_text": f"Partnership secured exclusive distribution channel in '{cl1}'. {rival_3} access blocked for 18-month exclusivity window.",
-         "fail_text": f"Partnership negotiations collapsed. {rival_1} secured the deal instead, strengthening their position in '{cl1}'."},
-        {"name": "Rapid Feature Innovation Sprint", "diff_boost": (18, 32), "sat_reduce": (6, 14), "risk": 0.52,
-         "success_text": f"Feature velocity outpaced all {len(competitor_names)} tracked competitors 3:1. Market perception shifted to innovation leader positioning.",
-         "fail_text": f"Feature bloat detected. Core product quality degraded. {rival_1} capitalized on our instability."},
-        {"name": f"Brand Narrative Overhaul", "diff_boost": (14, 26), "sat_reduce": (10, 20), "risk": 0.46,
-         "success_text": f"New brand narrative achieved viral resonance against {rival_1}. Share-of-voice increased 280%. Competitors forced to react defensively.",
-         "fail_text": f"Brand repositioning confused existing customer base. Trust metrics declined. {rival_2} exploited the transition gap."},
-    ]
-    
-    success_verdicts = [
-        f"The iterative simulation achieved market breakthrough against {', '.join(competitor_names[:3])}. Differentiation score exceeded 80%, establishing a defensible competitive moat across {len(target_clusters)} analyzed market clusters.",
-        "Simulation complete — SUCCESS. The agentic pivot engine identified a viable path through {attempts} strategic iterations. Final differentiation of {diff}% with saturation reduced to {sat}% indicates a strong, sustainable market position.",
-    ]
-    
-    failure_verdicts = [
-        f"SIMULATION EXHAUSTED: After {{attempts}} strategic pivots against {rival_1} and {rival_2}, the market proved too saturated for differentiation. All viable strategies were attempted but competitor reaction speed prevented breakthrough.",
-        "FATAL OUTCOME: The simulation ran {attempts} iterations without achieving escape velocity. Current saturation at {sat}% is unsustainable. The competitive landscape across {len_clusters} clusters is too dense for incremental strategies.".replace("{len_clusters}", str(len(target_clusters))),
-    ]
+    month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
-    used_strategies = []
-
+    # ── 3. SEND INIT FRAME (before heavy ML work) ────────────────────────────────
+    n_clusters = len(cluster_intel)
     try:
-        # ── Stage 0: Data-Driven Initialization ──
-        init_desc = (
-            f"Loaded {len(target_clusters)} market clusters, {len(competitor_names)} competitors "
-            f"({', '.join(competitor_names[:3])}), and {len(decision_experiments)} experiment recommendations. "
-            f"Real-time market saturation: {sat}%. Starting differentiation baseline: {diff}%."
-        )
-        
         await websocket.send_json({
             "status": "RUNNING",
             "iteration": 0,
-            "maxIterations": max_iterations,
+            "maxIterations": 0,          # unknown until we start iterating
             "stageData": {
                 "id": 0,
-                "title": "Initializing with Real Market Data",
-                "desc": init_desc,
+                "title": "Loading Market Intelligence...",
+                "desc": (
+                    f"Scanning {n_clusters} live market clusters and {len(competitor_names)} "
+                    f"tracked competitor(s) ({', '.join(rival_names)}). "
+                    f"Real-time saturation baseline: {sat}%. "
+                    f"Running ML scoring pipeline to generate ranked experiment candidates..."
+                ),
             },
             "chartPoint": {"month": month_names[0], "differentiation": round(diff), "saturation": round(sat)},
-            "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0}
+            "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0},
         })
-        
-        await asyncio.sleep(2.5)
+    except WebSocketDisconnect:
+        return
 
-        for i in range(1, max_iterations + 1):
+    await asyncio.sleep(0.3)
+
+    # ── 4. BUILD INSIGHTS FROM REAL CLUSTER DATA ─────────────────────────────────
+    insights = []
+    for cid, info in cluster_intel.items():
+        sat_raw  = info["saturation"]
+        evidence = max(1, info["signal_count"])
+        growth   = info["growth_rate"]
+        # Estimate signal strengths from cluster data
+        review_strength = min(1.0, max(0.1, (1.0 - sat_raw) * 0.8 + 0.1))
+        price_strength  = min(1.0, max(0.1, sat_raw * 0.5 + 0.15))
+        insights.append({
+            "cluster_id":             cid,
+            "cluster_name":           info["clean_label"],
+            "saturation":             sat_raw,
+            "trend":                  growth,
+            "evidence_count":         evidence,
+            "avg_signal_confidence":  min(1.0, 0.5 + growth * 0.3),
+            "review_signal_strength": review_strength,
+            "price_signal_strength":  price_strength,
+        })
+
+    if not insights:
+        insights = [{
+            "cluster_id": "fallback", "cluster_name": "General Market",
+            "saturation": avg_saturation, "trend": 0.0, "evidence_count": 3,
+            "avg_signal_confidence": 0.55, "review_signal_strength": 0.45,
+            "price_signal_strength": 0.35,
+        }]
+
+    # ── 5. GENERATE STRATEGY POOL IN BACKGROUND THREAD ──────────────────────────
+    try:
+        candidates = await asyncio.to_thread(generate_ranked_experiment_candidates, insights, 20)
+    except Exception as exc:
+        logger.error(f"ML candidate generation failed: {exc}")
+        candidates = []
+
+    # Build simulation strategy pool from real candidates
+    strategies = []
+    for cand in candidates:
+        try:
+            exp_data = generate_experiment_output(
+                cand, cand.get("ml_analysis", {}), cand.get("trust_and_risk", {})
+            )
+            ml_feats = cand.get("ml_features") or _build_ml_features(cand)
+            strategies.append({
+                # Identifying fields
+                "name":            f"{exp_data.get('decision_type','pivot').replace('_',' ').title()} — {exp_data.get('cluster_name','Market')[:20]}",
+                "cluster_id":      cand.get("cluster_id", ""),
+                "type":            cand.get("type", "unknown"),
+                # ML-derived risk and confidence (no magic numbers)
+                "risk":            min(0.80, max(0.05, float(exp_data.get("risk_score", 0.45)))),
+                "ml_score_base":   float(cand.get("candidate_score", 0.5)),
+                "confidence":      float(cand.get("candidate_score", 0.5)),
+                "evidence_count":  int(cand.get("evidence_count", 1)),
+                # Full ML feature set (used for live re-scoring)
+                "ml_features":     ml_feats,
+                # Narrative
+                "experiment":      exp_data.get("experiment", "Strategic Pivot"),
+                "hypothesis":      exp_data.get("hypothesis", "Improves market positioning."),
+                "metric":          exp_data.get("metric", "Conversion Rate"),
+                "expected_impact": exp_data.get("expected_impact", ""),
+                # Tracking
+                "fail_count":      0,
+                "win_count":       0,
+            })
+        except Exception as exc:
+            logger.warning(f"Skipped candidate: {exc}")
+
+    if not strategies:
+        # Graceful dead-end: no pipeline output at all
+        try:
+            await websocket.send_json({
+                "status": "FAILURE",
+                "iteration": 1,
+                "maxIterations": 1,
+                "stageData": {
+                    "id": 1,
+                    "title": "✦ Outcome: Insufficient Data",
+                    "desc": (
+                        f"The ML pipeline found no viable experiment candidates across "
+                        f"{n_clusters} clusters. Insufficient market signal data to simulate."
+                    ),
+                },
+                "chartPoint": {"month": month_names[1], "differentiation": round(diff), "saturation": round(sat)},
+                "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0},
+            })
+        except WebSocketDisconnect:
+            pass
+        return
+
+    # ── 6. SEND "READY" FRAME ────────────────────────────────────────────────────
+    try:
+        await websocket.send_json({
+            "status": "RUNNING",
+            "iteration": 0,
+            "maxIterations": 0,
+            "stageData": {
+                "id": 0,
+                "title": f"Pipeline Ready — {len(strategies)} Strategies Loaded",
+                "desc": (
+                    f"Ranked {len(strategies)} experiment candidates from {n_clusters} real clusters. "
+                    f"Starting differentiation: {diff}%, saturation: {sat}%. "
+                    f"Competitors tracked: {', '.join(rival_names)}. "
+                    f"The agentic loop will iterate until breakthrough (diff ≥ 80%) or strategic exhaustion."
+                ),
+            },
+            "chartPoint": {"month": month_names[0], "differentiation": round(diff), "saturation": round(sat)},
+            "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0},
+        })
+    except WebSocketDisconnect:
+        return
+
+    await asyncio.sleep(0.5)
+
+    # ── 7. AGENTIC SIMULATION LOOP ───────────────────────────────────────────────
+    # Termination conditions (all derived from data, no hardcoded iteration cap):
+    #   SUCCESS  : diff >= 80   (market breakthrough)
+    #   FAILURE  : sat >= 95    (market collapse)
+    #   EXHAUSTED: best viable success_chance across all strategies < 0.12
+    #
+    VIABILITY_FLOOR   = 0.12   # below this success_chance, strategy is not viable
+    BREAKTHROUGH_DIFF = 80.0
+    COLLAPSE_SAT      = 95.0
+    SAFETY_CAP        = 30     # hard upper bound to prevent runaway ws session
+
+    i = 0
+    try:
+        while i < SAFETY_CAP:
+            i += 1
             month = month_names[i % 12]
-            
-            # Use ML model to pick the best strategy from the available pool
-            if available:
-                # Prepare features for each candidate strategy
-                scored_candidates = []
-                for s in available:
-                    feat = {
-                        "momentum": min(1.0, momentum / 5.0), # normalized
-                        "saturation": sat / 100.0,
-                        "risk": s["risk"],
-                        "evidence_count": 5 # assumed for simulation context
-                    }
-                    s["ml_score"] = strategy_ranker.predict_score(feat)
-                    scored_candidates.append(s)
-                
-                # Sort by ML score
-                scored_candidates.sort(key=lambda x: x["ml_score"], reverse=True)
-                strategy = scored_candidates[0]
-            else:
-                strategy = random.choice(strategies)
-            
-            used_strategies.append(strategy["name"])
 
-            
-            # ── Data-Driven Probability Engine ──
-            base_chance = 1.0 - strategy["risk"]
-            momentum_bonus = min(momentum * 0.08, 0.2)
-            saturation_penalty = max((sat - 70) * 0.005, 0)
-            success_chance = min(max(base_chance + momentum_bonus - saturation_penalty, 0.15), 0.85)
-            
-            roll = random.random()
-            succeeded = roll < success_chance
-            
+            # ── 7a. Re-score all strategies with ML features updated for current state ──
+            # We shift ml_features that can be influenced by the sim state:
+            #   demand_gap          â† boosted by momentum (momentum creates demand signal)
+            scored = []
+            for s in strategies:
+                # If a cluster focus is provided, only iterate strategies from THAT specific market segment.
+                # This ensures the simulation stays relevant to the user's specific strategic goal.
+                if cluster_focus and s.get("cluster_id") != cluster_focus:
+                    continue
+                    
+                # Start from the ML features computed from real cluster data
+                live_features = {**s["ml_features"]}
+
+                # Update with live simulation state
+                live_features["competition_density"] = round(min(1.0, sat / 100.0), 3)
+                live_features["demand_gap"] = round(min(1.0, max(0.0,
+                    live_features.get("demand_gap", 0.5) + (momentum * 0.04)
+                )), 3)
+                # Penalize strategies that have already failed: lower evidence_strength
+                if s["fail_count"] > 0:
+                    live_features["evidence_strength"] = round(max(0.0,
+                        live_features.get("evidence_strength", 0.5) - s["fail_count"] * 0.08
+                    ), 3)
+
+                live_ml_score = strategy_ranker.predict_score(live_features)
+
+                # Compute current success_chance from ML score + momentum/saturation
+                risk            = s["risk"]
+                base_chance     = (live_ml_score * 0.7) + ((1.0 - risk) * 0.3)
+                momentum_bonus  = min(momentum * 0.06, 0.18)
+                sat_penalty     = max((sat - 65.0) * 0.006, 0.0)
+                success_chance  = max(0.0, min(0.90, base_chance + momentum_bonus - sat_penalty))
+
+                scored.append({
+                    **s,
+                    "live_ml_score":   round(live_ml_score, 4),
+                    "success_chance":  round(success_chance, 4),
+                    "live_features":   live_features,
+                })
+
+            # Sort by success_chance descending (best bet first)
+            scored.sort(key=lambda x: x["success_chance"], reverse=True)
+            best = scored[0]
+
+            # ── 7b. Check for strategic exhaustion ──────────────────────────────
+            if best["success_chance"] < VIABILITY_FLOOR:
+                exhausted_desc = (
+                    f"After {i} strategic iterations, the simulation engine analysed {len(strategies)} "
+                    f"unique experiment candidates. The highest achievable success probability is "
+                    f"{round(best['success_chance']*100,1)}% — below the {round(VIABILITY_FLOOR*100)}% viability "
+                    f"floor. With saturation at {round(sat)}% and {len(rival_names)} active competitors, "
+                    f"no viable differentiation path exists under current market conditions."
+                )
+                await websocket.send_json({
+                    "status": "FAILURE",
+                    "iteration": i,
+                    "maxIterations": i,
+                    "stageData": {
+                        "id": i,
+                        "title": "✦ Outcome: Market Dead-End",
+                        "desc": exhausted_desc,
+                    },
+                    "chartPoint": {"month": month, "differentiation": round(diff), "saturation": round(sat)},
+                    "kpis": {
+                        "differentiation": round(diff),
+                        "saturation":      round(sat),
+                        "persona_drift":   round(momentum * 60),
+                        "resonance":       round(max(0.1, 1.0 + (diff / 40.0)), 1),
+                    },
+                })
+                break
+
+            strategy = best
+
+            # ── 7c. Monte-Carlo roll ─────────────────────────────────────────────
+            roll      = random.random()
+            succeeded = roll < strategy["success_chance"]
+
+            # ── 7d. Apply outcomes (all derived from ML scores, no magic ranges) ──
             if succeeded:
-                boost = random.randint(*strategy["diff_boost"])
-                reduction = random.randint(*strategy["sat_reduce"])
-                diff += boost
-                sat -= reduction
-                momentum += 0.5
-                title = f"Attempt {i}: {strategy['name']} ✓"
-                desc = strategy["success_text"]
-            else:
-                penalty = random.randint(2, 12)
-                increase = random.randint(3, 10)
-                diff -= penalty
-                sat += increase
-                momentum = max(momentum - 0.3, 0)
-                title = f"Attempt {i}: {strategy['name']} ✗"
-                desc = strategy["fail_text"] + " Pivoting to next strategy..."
+                # Boost = confidence * evidence_strength * 25  (max ~16 pts per win)
+                boost     = strategy["confidence"] * strategy["live_features"].get("evidence_strength", 0.5) * 25.0
+                boost    *= max(1.0, 1.0 + momentum * 0.15)      # momentum multiplier
+                reduction = math.log1p(strategy["evidence_count"]) * 4.0  # sat reduction
+                reduction = min(18.0, max(3.0, reduction))
+
+                diff      += boost
+                sat       -= reduction
+                momentum  += 0.4
+
+                # Update tracking
+                for s in strategies:
+                    if s["cluster_id"] == strategy["cluster_id"] and s["type"] == strategy["type"]:
+                        s["win_count"] += 1
+
+                # Lifecyle phrases to avoid repetition
+                phases = ["Deploying", "Scaling", "Dominating", "Hardening", "Optimizing"]
+                phase  = phases[min(len(phases)-1, strategy.get("win_count", 0))]
                 
-            diff = max(5, min(100, diff))
-            sat = max(10, min(100, sat))
-            
-            # ── Win/Loss Evaluation ──
-            status = "RUNNING"
+                impact_str = strategy["expected_impact"] or f"+{round(boost, 1)}%"
+                title = f"Iteration {i} ✓  {phase}: {strategy['name']}"
+
+                desc  = (
+                    f"ML score: {round(strategy['live_ml_score']*100,1)}% | "
+                    f"Success probability: {round(strategy['success_chance']*100,1)}% | "
+                    f"Roll: {round(roll*100,1)}% ✓\n\n"
+                    f"Experiment deployed: {strategy['experiment']}\n"
+                    f"Hypothesis: {strategy['hypothesis']}\n"
+                    f"Target metric: {strategy['metric']} {impact_str}\n\n"
+                    f"Differentiation +{round(boost,1)}pt → {round(diff,1)}%. "
+                    f"Saturation reduced by {round(reduction,1)}pt → {round(sat,1)}%."
+                )
+            else:
+                penalty   = strategy["risk"] * 12.0
+                sat_rise  = strategy["live_features"].get("competition_density", 0.5) * 8.0
+                sat_rise  = min(10.0, max(2.0, sat_rise))
+
+                diff     -= penalty
+                sat      += sat_rise
+                momentum  = max(0.0, momentum - 0.25)
+
+                for s in strategies:
+                    if s["cluster_id"] == strategy["cluster_id"] and s["type"] == strategy["type"]:
+                        s["fail_count"] += 1
+
+                title = f"Iteration {i} ✗  {strategy['name']}"
+                desc  = (
+                    f"ML score: {round(strategy['live_ml_score']*100,1)}% | "
+                    f"Success probability: {round(strategy['success_chance']*100,1)}% | "
+                    f"Roll: {round(roll*100,1)}% ✗\n\n"
+                    f"Experiment: {strategy['experiment']}\n"
+                    f"Competitors reacted to our {strategy['metric']} pivot and neutralised the advantage. "
+                    f"Risk exposure {round(strategy['risk']*100)}% materialised.\n\n"
+                    f"Differentiation âˆ’{round(penalty,1)}pt → {round(diff,1)}%. "
+                    f"Saturation +{round(sat_rise,1)}pt → {round(sat,1)}%."
+                )
+
+            diff = max(1.0, min(100.0, diff))
+            sat  = max(5.0,  min(100.0, sat))
+
+            # ── 7e. Check terminal conditions ────────────────────────────────────
             is_final = False
-            
-            if diff >= 80:
+            status   = "RUNNING"
+
+            if diff >= BREAKTHROUGH_DIFF:
                 is_final = True
-                status = "SUCCESS"
-                title = "✦ Outcome: Market Domination"
-                desc = random.choice(success_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
-            elif sat >= 95:
+                status   = "SUCCESS"
+                title    = "✦ Outcome: Market Breakthrough"
+                desc     = (
+                    f"After {i} data-driven iterations the simulation achieved breakthrough. "
+                    f"Differentiation reached {round(diff,1)}% against "
+                    f"{', '.join(rival_names)} across {n_clusters} analysed clusters. "
+                    f"Saturation reduced to {round(sat,1)}%. "
+                    f"A defensible competitive moat has been established."
+                )
+            elif sat >= COLLAPSE_SAT:
                 is_final = True
-                status = "FAILURE"
-                title = "✦ Outcome: Strategic Collapse"
-                desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
-            elif i == max_iterations:
+                status   = "FAILURE"
+                title    = "✦ Outcome: Market Saturation Collapse"
+                desc     = (
+                    f"Saturation hit {round(sat,1)}% after {i} iterations — the market is too dense "
+                    f"to achieve meaningful differentiation. "
+                    f"Competitors ({', '.join(rival_names)}) absorbed every strategic move. "
+                    f"Final differentiation: {round(diff,1)}%."
+                )
+            elif i == SAFETY_CAP:
                 is_final = True
                 if diff >= 60:
                     status = "SUCCESS"
-                    title = "✦ Outcome: Marginal Victory"
-                    desc = f"After {i} iterations against {rival_1} and {rival_2}, differentiation reached {round(diff)}% — sufficient for a defensible but narrow position. Continued monitoring recommended."
+                    title  = "✦ Outcome: Narrow Margin Win"
+                    desc   = (
+                        f"After the maximum {SAFETY_CAP} iterations, differentiation stands at "
+                        f"{round(diff,1)}% — enough for a defensible but narrow market position. "
+                        f"Continued monitoring against {', '.join(rival_names)} is strongly recommended."
+                    )
                 else:
                     status = "FAILURE"
-                    title = "✦ Outcome: Exhaustion"
-                    desc = random.choice(failure_verdicts).format(attempts=i, diff=round(diff), sat=round(sat))
+                    title  = "✦ Outcome: Exhaustion Without Breakthrough"
+                    desc   = (
+                        f"After {SAFETY_CAP} iterations, differentiation remained at {round(diff,1)}% "
+                        f"with saturation at {round(sat,1)}%. No breakthrough achieved against "
+                        f"{', '.join(rival_names)}."
+                    )
 
             await websocket.send_json({
-                "status": status,
-                "iteration": i,
-                "maxIterations": max_iterations,
-                "stageData": {
-                    "id": i,
-                    "title": title,
-                    "desc": desc,
-                },
-                "chartPoint": {"month": month, "differentiation": round(diff), "saturation": round(sat)},
+                "status":        status,
+                "iteration":     i,
+                "maxIterations": 0,   # dynamic; UI shows progress bar based on diff/sat
+                "stageData":     {"id": i, "title": title, "desc": desc},
+                "chartPoint":    {"month": month, "differentiation": round(diff), "saturation": round(sat)},
                 "kpis": {
-                    "differentiation": round(diff), 
-                    "saturation": round(sat), 
-                    "persona_drift": round(momentum * 60), 
-                    "resonance": round(1.0 + (diff / 40), 1)
-                }
+                    "differentiation": round(diff),
+                    "saturation":      round(sat),
+                    "persona_drift":   round(momentum * 60),
+                    "resonance":       round(max(0.1, 1.0 + (diff / 40.0)), 1),
+                },
             })
 
             if is_final:
                 break
-                
-            await asyncio.sleep(3.0)
-            
+
+            logger.info(f"Simulating Month {month} (Iteration {i}). Status: {status}")
+            await asyncio.sleep(2.0)
+
     except WebSocketDisconnect:
-        logger.info("Simulation websocket disconnected by client")
-    except Exception as e:
-        logger.error(f"Simulation WS error: {e}")
+        logger.info("Simulation WS disconnected by client")
+    except Exception as exc:
+        logger.error(f"Simulation WS error: {exc}", exc_info=True)
         try:
-            await websocket.close()
-        except:
+            await websocket.send_json({
+                "status": "FAILURE",
+                "iteration": i,
+                "maxIterations": i,
+                "stageData": {
+                    "id": i,
+                    "title": "✦ Internal Engine Error",
+                    "desc": f"The simulation encountered an unexpected error: {exc}",
+                },
+                "chartPoint": {"month": month_names[i % 12], "differentiation": round(diff), "saturation": round(sat)},
+                "kpis": {"differentiation": round(diff), "saturation": round(sat), "persona_drift": 0, "resonance": 1.0},
+            })
+        except Exception:
             pass
 
 if __name__ == "__main__":
     import uvicorn
-    # Render provides the port in the PORT environment variable
     port = int(os.environ.get("PORT", 8000))
     logger.info(f"Starting uvicorn on 0.0.0.0:{port}")
-    # Bind to 0.0.0.0 so the service is accessible externally
     uvicorn.run("api:app", host="0.0.0.0", port=port, log_level="info")
+

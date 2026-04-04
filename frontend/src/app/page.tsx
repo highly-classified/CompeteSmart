@@ -1,11 +1,5 @@
-import Hero from "@/components/Hero";
-import AboutUs from "@/components/AboutUs";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    <main className="min-h-screen bg-background w-full">
-      <Hero />
-      <AboutUs />
-    </main>
-  );
+  redirect("/dashboard");
 }

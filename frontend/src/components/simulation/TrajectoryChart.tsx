@@ -23,7 +23,9 @@ export function TrajectoryChart({ data }: { data: DataPoint[] }) {
 
             <div className="absolute inset-0 z-0 bg-gradient-to-b from-transparent to-zinc-900/50 pointer-events-none" />
 
-            <ResponsiveContainer width="100%" height="80%" className="relative z-10">
+            <div className="relative z-10" style={{ height: 340 }}>
+                <ResponsiveContainer width="100%" height="100%">
+
                 <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                         <linearGradient id="colorDiff" x1="0" y1="0" x2="0" y2="1">
@@ -84,7 +86,8 @@ export function TrajectoryChart({ data }: { data: DataPoint[] }) {
                         isAnimationActive={false}
                     />
                 </AreaChart>
-            </ResponsiveContainer>
+                </ResponsiveContainer>
+            </div>
         </motion.div>
     );
 }
